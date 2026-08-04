@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DECK as FALLBACK_DECK } from './deck'
 import { generateDeck } from './generator'
+import { loadHistory, saveToHistory, clearHistory } from './history'
 import Scene from './Scene'
 
 const btn = {
@@ -14,24 +15,63 @@ const btn = {
   fontSize: 14,
 }
 
+const STAGES = [
+  'Writing outline…',
+  'Building scenes…',
+  'Placing cameras…',
+  'Polishing lighting…',
+]
+
 export default function App() {
+  const [boot] = useState(loadHistory)
   const [idx, setIdx] = useState(0)
-  const [DECK, setDeck] = useState(FALLBACK_DECK)
+  const [DECK, setDeck] = useState(boot[0]?.deck ?? FALLBACK_DECK)
+  const [generated, setGenerated] = useState(boot.length > 0)
+  const [historyList, setHistoryList] = useState(boot)
+  const [showHistory, setShowHistory] = useState(false)
   const [topic, setTopic] = useState('')
   const [loading, setLoading] = useState(false)
+  const [stage, setStage] = useState(0)
+  const [error, setError] = useState(null)
   const slide = DECK.slides[idx]
 
+  // Cycle loading stage messages while generating.
+  useEffect(() => {
+    if (!loading) return
+    const t = setInterval(() => setStage((s) => (s + 1) % STAGES.length), 1100)
+    return () => clearInterval(t)
+  }, [loading])
+
+  // Auto-dismiss the error banner.
+  useEffect(() => {
+    if (!error) return
+    const t = setTimeout(() => setError(null), 9000)
+    return () => clearTimeout(t)
+  }, [error])
+
   const generate = async () => {
-    if (!topic || loading) return
+    if (!topic.trim() || loading) return
     setLoading(true)
+    setStage(0)
+    setError(null)
     try {
-      const d = await generateDeck(topic)
+      const d = await generateDeck(topic.trim())
       setDeck(d)
       setIdx(0)
+      setGenerated(true)
+      setHistoryList(saveToHistory({ topic: topic.trim(), deck: d, ts: Date.now() }))
     } catch (e) {
-      alert('Generation failed: ' + e.message)
+      setError('Generation failed: ' + e.message)
     }
     setLoading(false)
+  }
+
+  const loadFromHistory = (entry) => {
+    setDeck(entry.deck)
+    setIdx(0)
+    setTopic(entry.topic)
+    setGenerated(true)
+    setShowHistory(false)
   }
 
   const go = (dir) =>
@@ -41,6 +81,7 @@ export default function App() {
     const onKey = (e) => {
       if (e.key === 'ArrowRight') go(1)
       if (e.key === 'ArrowLeft') go(-1)
+      if (e.key === 'Escape') setShowHistory(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -90,6 +131,14 @@ export default function App() {
 
       {/* AI generation bar */}
       <div style={{ position: 'absolute', top: 20, right: 24, display: 'flex', gap: 8 }}>
+        <button
+          style={{ ...btn, opacity: loading ? 0.6 : 1 }}
+          onClick={() => setShowHistory((v) => !v)}
+          disabled={loading}
+          title="Past decks are saved in this browser"
+        >
+          🕘 History
+        </button>
         <input
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
@@ -108,11 +157,86 @@ export default function App() {
         <button
           style={{ ...btn, opacity: loading ? 0.6 : 1 }}
           onClick={generate}
-          disabled={loading}
+          disabled={loading || !topic.trim()}
         >
-          {loading ? 'Thinking…' : 'Generate'}
+          {loading ? 'Thinking…' : generated ? '↻ Regenerate' : 'Generate'}
         </button>
       </div>
+
+      {/* History panel */}
+      {showHistory && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 64,
+            right: 24,
+            width: 320,
+            maxHeight: '60vh',
+            overflowY: 'auto',
+            background: 'rgba(10,12,20,0.94)',
+            border: '1px solid rgba(255,255,255,0.18)',
+            borderRadius: 12,
+            padding: 12,
+            zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              color: 'rgba(255,255,255,0.9)',
+              fontWeight: 700,
+              fontSize: 14,
+              marginBottom: 10,
+            }}
+          >
+            Deck history
+          </div>
+          {historyList.length === 0 && (
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
+              Nothing here yet — generate a deck and it will be saved.
+            </div>
+          )}
+          {historyList.map((entry, i) => (
+            <button
+              key={i}
+              onClick={() => loadFromHistory(entry)}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                background: 'transparent',
+                border: 'none',
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                padding: '10px 4px',
+                cursor: 'pointer',
+                color: 'white',
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.topic}</div>
+              <div style={{ fontSize: 12, opacity: 0.6 }}>
+                {entry.deck.slides.length} slides ·{' '}
+                {new Date(entry.ts).toLocaleString()}
+              </div>
+            </button>
+          ))}
+          {historyList.length > 0 && (
+            <button
+              onClick={() => {
+                clearHistory()
+                setHistoryList([])
+                setGenerated(false)
+              }}
+              style={{
+                ...btn,
+                marginTop: 10,
+                width: '100%',
+                background: 'rgba(255,80,80,0.15)',
+              }}
+            >
+              Clear history
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Slide indicator */}
       <div
@@ -130,31 +254,78 @@ export default function App() {
 
       {/* Navigation */}
       <div style={{ position: 'absolute', bottom: 20, right: 24, display: 'flex', gap: 8 }}>
-        <button style={btn} onClick={() => go(-1)} disabled={idx === 0}>
+        <button style={btn} onClick={() => go(-1)} disabled={idx === 0 || loading}>
           ‹ Prev
         </button>
-        <button style={btn} onClick={() => go(1)} disabled={idx === DECK.slides.length - 1}>
+        <button
+          style={btn}
+          onClick={() => go(1)}
+          disabled={idx === DECK.slides.length - 1 || loading}
+        >
           Next ›
         </button>
       </div>
 
-      {/* Loading overlay — never a blank screen */}
+      {/* Error banner — never a blank screen */}
+      {error && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 64,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            maxWidth: 560,
+            background: 'rgba(120,20,20,0.9)',
+            border: '1px solid rgba(255,120,120,0.45)',
+            borderRadius: 10,
+            padding: '10px 14px',
+            color: '#ffd9d9',
+            fontSize: 13,
+            zIndex: 20,
+          }}
+        >
+          <span style={{ flex: 1, wordBreak: 'break-word' }}>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffd9d9',
+              cursor: 'pointer',
+              fontSize: 16,
+              fontWeight: 700,
+            }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Loading overlay with stage messages */}
       {loading && (
         <div
           style={{
             position: 'absolute',
             inset: 0,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(5,6,10,0.72)',
+            gap: 12,
+            background: 'rgba(5,6,10,0.78)',
             color: 'white',
-            fontSize: 18,
-            fontWeight: 600,
-            letterSpacing: 0.5,
+            zIndex: 30,
           }}
         >
-          Generating your 3D deck…
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 0.5 }}>
+            Building your 3D deck
+          </div>
+          <div style={{ fontSize: 15, opacity: 0.75 }}>{STAGES[stage]}</div>
+          <div style={{ fontSize: 13, opacity: 0.5 }}>Topic: “{topic}”</div>
         </div>
       )}
 

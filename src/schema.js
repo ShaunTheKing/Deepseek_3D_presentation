@@ -38,7 +38,9 @@ export function validateDeck(deck) {
         }
       } else if (obj.type === 'primitive') {
         if (!SHAPES.has(obj.shape) || typeof obj.color !== 'string') {
-          throw new Error(`${o}: primitive needs a valid shape and color`)
+          throw new Error(
+            `${o}: primitive needs a valid shape and color (got shape: "${obj.shape}", color: "${obj.color}")`,
+          )
         }
         if (obj.rotation !== undefined && !isVec3(obj.rotation)) {
           throw new Error(`${o}: rotation must be an array of 3 numbers`)
