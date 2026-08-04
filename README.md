@@ -49,7 +49,7 @@ Test topics from the plan: *"How volcanoes erupt"*, *"The Roman Empire"*,
 | `src/App.jsx` | UI shell: title, Generate bar, nav, overlays |
 | `src/Scene.jsx` | Three.js renderer: camera rig, transitions, glow, sparkles |
 | `src/deck.js` | Fallback deck (works offline, demos every object type) |
-| `src/generator.js` | Phase 1 AI generator — calls DeepSeek, validates the result |
+| `src/generator.js` | Phase 1 AI generator — calls DeepSeek, validates, retries once on invalid output |
 | `src/schema.js` | Deck schema + `validateDeck` — structural validation of LLM output |
 | `src/main.jsx` | React entry point |
 
