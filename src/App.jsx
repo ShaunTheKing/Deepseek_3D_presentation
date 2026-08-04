@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { DECK as FALLBACK_DECK } from './deck'
 import { generateDeck, routeQuestion, generateInsertSlides } from './generator'
 import { loadHistory, saveToHistory, clearHistory } from './history'
-import Scene, { preloadAssets } from './Scene'
+import Scene, { controlsAPI, preloadAssets } from './Scene'
 
 const btn = {
   padding: '8px 14px',
@@ -121,6 +121,14 @@ export default function App() {
       if (e.key === '/' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
         e.preventDefault()
         askRef.current?.focus()
+      }
+      if ((e.key === '+' || e.key === '=') && e.target.tagName !== 'INPUT') {
+        e.preventDefault()
+        controlsAPI.zoomIn?.()
+      }
+      if ((e.key === '-' || e.key === '_') && e.target.tagName !== 'INPUT') {
+        e.preventDefault()
+        controlsAPI.zoomOut?.()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -380,6 +388,12 @@ export default function App() {
 
       {/* Navigation */}
       <div style={{ position: 'absolute', bottom: 20, right: 24, display: 'flex', gap: 8 }}>
+        <button style={btn} onClick={() => controlsAPI.zoomOut?.()} title="Zoom out (−)">
+          −
+        </button>
+        <button style={btn} onClick={() => controlsAPI.zoomIn?.()} title="Zoom in (+)">
+          +
+        </button>
         <button
           style={{ ...btn, opacity: muted ? 0.6 : 1 }}
           onClick={() => setMuted((m) => !m)}

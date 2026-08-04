@@ -1,14 +1,43 @@
-import React, { Suspense, useEffect, useMemo, useRef } from 'react'
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Billboard, Sparkles, Stars, Text, useGLTF, useTexture } from '@react-three/drei'
+import {
+  Billboard,
+  Environment,
+  Float,
+  OrbitControls,
+  Sparkles,
+  Stars,
+  Text,
+  useGLTF,
+  useTexture,
+} from '@react-three/drei'
+import { Bloom, EffectComposer, Noise, Vignette } from '@react-three/postprocessing'
+import gsap from 'gsap'
 import * as THREE from 'three'
 import { CATALOG_BY_ID } from './catalog'
+import fontUrl from '@fontsource/space-grotesk/files/space-grotesk-latin-400-normal.woff2'
 
-// --- Camera rig: cinematically flies (or orbits / fades) between slides ----------
-function CameraRig({ camera, transition }) {
+// Bridge so the App can trigger zoom without reaching into the Canvas.
+export const controlsAPI = { zoomIn: null, zoomOut: null }
+
+// --- Camera rig: flies (or orbits / fades) between slides. OrbitControls takes
+// --- over when the flight settles; the rig resumes from wherever the user
+// --- left the camera, so zoom/orbit state is never lost. -----------------------
+function CameraRig({ camera, transition, active, onSettled }) {
   const { camera: cam } = useThree()
   const key = JSON.stringify(camera)
   const state = useRef(null)
+  const settledRef = useRef(false)
+  const onSettledRef = useRef(onSettled)
+  onSettledRef.current = onSettled
+
   if (!state.current) {
     state.current = {
       pos: new THREE.Vector3(...camera.position),
@@ -29,8 +58,21 @@ function CameraRig({ camera, transition }) {
     [key],
   )
 
+  // When the rig takes over, start from the LIVE camera (post-zoom/orbit).
+  useEffect(() => {
+    if (!active) return
+    const s = state.current
+    s.pos.copy(cam.position)
+    const dir = new THREE.Vector3()
+    cam.getWorldDirection(dir)
+    s.look.copy(cam.position).add(dir)
+    s.fov = cam.fov
+  }, [active, cam])
+
   useEffect(() => {
     const s = state.current
+    settledRef.current = false
+    s.orbit = 0
     if (s.first) {
       // Snap to the first slide instead of flying in from the origin.
       cam.position.copy(target.pos)
@@ -38,12 +80,15 @@ function CameraRig({ camera, transition }) {
       cam.fov = target.fov
       cam.updateProjectionMatrix()
       s.first = false
-    } else {
-      s.orbit = transition === 'orbit' ? 1 : 0
+      settledRef.current = true
+      onSettledRef.current?.()
+    } else if (transition === 'orbit') {
+      s.orbit = 1
     }
   }, [key, target, transition, cam])
 
   useFrame((_, dt) => {
+    if (!active) return
     const s = state.current
     const t = Math.min(1, dt * 2.2) // framerate-independent damping
     s.pos.lerp(target.pos, t)
@@ -62,12 +107,22 @@ function CameraRig({ camera, transition }) {
     cam.lookAt(s.look)
     cam.fov = s.fov
     cam.updateProjectionMatrix()
+
+    if (
+      !settledRef.current &&
+      s.pos.distanceTo(target.pos) < 0.02 &&
+      s.look.distanceTo(target.look) < 0.02 &&
+      s.orbit < 0.02
+    ) {
+      settledRef.current = true
+      onSettledRef.current?.() // hand control back to OrbitControls
+    }
   })
 
   return null
 }
 
-// --- Error boundary: one failing GLB/image must never blank the whole app --------
+// --- Error boundary: one failing asset/effect must never blank the app ----------
 class LoadBoundary extends React.Component {
   state = { failed: false }
   static getDerivedStateFromError() {
@@ -76,6 +131,65 @@ class LoadBoundary extends React.Component {
   render() {
     return this.state.failed ? null : this.props.children
   }
+}
+
+// --- Nebula background: large back-side sphere, cheap gradient shader -----------
+function NebulaBackground() {
+  const meshRef = useRef()
+  useFrame((_, dt) => {
+    if (meshRef.current) meshRef.current.rotation.y += dt * 0.004
+  })
+  return (
+    <mesh ref={meshRef}>
+      <sphereGeometry args={[30, 32, 24]} />
+      <shaderMaterial
+        side={THREE.BackSide}
+        depthWrite={false}
+        uniforms={{
+          uTop: { value: new THREE.Color('#0b1230') },
+          uMid: { value: new THREE.Color('#141b3d') },
+          uBottom: { value: new THREE.Color('#060810') },
+        }}
+        vertexShader={`
+          varying vec3 vPos;
+          void main() {
+            vPos = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }`}
+        fragmentShader={`
+          varying vec3 vPos;
+          uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uBottom;
+          void main() {
+            float t = normalize(vPos).y * 0.5 + 0.5;
+            vec3 col = mix(uBottom, uMid, smoothstep(0.0, 0.55, t));
+            col = mix(col, uTop, smoothstep(0.55, 1.0, t));
+            float band = 0.5 + 0.5 * sin(vPos.x * 0.35 + vPos.z * 0.28);
+            col += vec3(0.025, 0.012, 0.055) * band;
+            gl_FragColor = vec4(col, 1.0);
+          }`}
+      />
+    </mesh>
+  )
+}
+
+// --- GSAP staggered entrance: objects scale in when their slide activates ------
+function Entrance({ delay, children }) {
+  const ref = useRef()
+  useEffect(() => {
+    const g = ref.current
+    if (!g) return
+    g.scale.setScalar(0.001)
+    const tween = gsap.to(g.scale, {
+      x: 1,
+      y: 1,
+      z: 1,
+      duration: 0.65,
+      ease: 'back.out(1.3)',
+      delay,
+    })
+    return () => tween.kill() // no leaked tweens when decks regenerate
+  }, [delay])
+  return <group ref={ref}>{children}</group>
 }
 
 // --- Objects ---------------------------------------------------------------------
@@ -88,11 +202,17 @@ function TextObject({ obj }) {
       maxWidth={12}
       anchorX="center"
       anchorY="middle"
+      font={fontUrl}
+      letterSpacing={0.03}
     >
       {obj.content}
     </Text>
   )
-  return obj.billboard ? <Billboard>{text}</Billboard> : text
+  return (
+    <Float speed={1.4} rotationIntensity={0.12} floatIntensity={0.5}>
+      {obj.billboard ? <Billboard>{text}</Billboard> : text}
+    </Float>
+  )
 }
 
 function PrimitiveObject({ obj }) {
@@ -110,12 +230,15 @@ function PrimitiveObject({ obj }) {
       scale={obj.scale ?? [1, 1, 1]}
     >
       {geometry}
-      <meshStandardMaterial
+      {/* Physical material: clearcoat sheen on metallic "hero" objects. */}
+      <meshPhysicalMaterial
         color={obj.color}
         metalness={obj.metalness ?? 0.2}
         roughness={obj.roughness ?? 0.5}
         emissive={obj.emissive ?? '#000000'}
         emissiveIntensity={obj.emissive ? 0.6 : 0}
+        clearcoat={obj.metalness >= 0.4 ? 0.45 : 0.05}
+        clearcoatRoughness={0.4}
       />
     </mesh>
   )
@@ -175,6 +298,7 @@ function ChartObject({ obj }) {
               anchorX="center"
               anchorY="top"
               maxWidth={1.6}
+              font={fontUrl}
             >
               {d.label}
             </Text>
@@ -188,6 +312,7 @@ function ChartObject({ obj }) {
           color="#ffffff"
           anchorX="center"
           anchorY="bottom"
+          font={fontUrl}
         >
           {obj.title}
         </Text>
@@ -247,40 +372,48 @@ export function preloadAssets(deck) {
   }
 }
 
-function SlideObject({ obj }) {
+function SlideObject({ obj, index }) {
+  let child
   switch (obj.type) {
     case 'text':
-      return <TextObject obj={obj} />
+      child = <TextObject obj={obj} />
+      break
     case 'primitive':
-      return <PrimitiveObject obj={obj} />
+      child = <PrimitiveObject obj={obj} />
+      break
     case 'glb':
-      return (
+      child = (
         <LoadBoundary>
           <Suspense fallback={null}>
             <GlbObject obj={obj} />
           </Suspense>
         </LoadBoundary>
       )
+      break
     case 'chart':
-      return <ChartObject obj={obj} />
+      child = <ChartObject obj={obj} />
+      break
     case 'image':
-      return (
+      child = (
         <LoadBoundary>
           <Suspense fallback={null}>
             <ImageObject obj={obj} />
           </Suspense>
         </LoadBoundary>
       )
+      break
     default:
       return null
   }
+  // ~80ms stagger between objects when the slide activates.
+  return <Entrance delay={index * 0.08}>{child}</Entrance>
 }
 
 function Slide({ slide }) {
   return (
     <group>
       {slide.objects.map((obj, i) => (
-        <SlideObject key={i} obj={obj} />
+        <SlideObject key={i} obj={obj} index={i} />
       ))}
     </group>
   )
@@ -326,6 +459,25 @@ export default function Scene({ slide }) {
 
   if (!webglOK) return <WebGLFallback />
 
+  // freeLook: OrbitControls own the camera; transitions lock them and the rig flies.
+  const [freeLook, setFreeLook] = useState(false)
+  const controlsRef = useRef()
+  const slideRef = useRef(slide)
+
+  useEffect(() => {
+    if (slideRef.current !== slide) {
+      slideRef.current = slide
+      setFreeLook(false) // lock controls; CameraRig takes over from live pose
+    }
+  }, [slide])
+
+  useEffect(() => {
+    controlsAPI.zoomIn = () => controlsRef.current?.zoomIn(0.6)
+    controlsAPI.zoomOut = () => controlsRef.current?.zoomOut(0.6)
+  }, [])
+
+  const handleSettled = useCallback(() => setFreeLook(true), [])
+
   return (
     <Canvas
       dpr={[1, 2]}
@@ -333,21 +485,68 @@ export default function Scene({ slide }) {
       camera={{ position: [0, 2.6, 9.5], fov: 50 }}
       fallback={<WebGLFallback />}
     >
-      <color attach="background" args={['#05060a']} />
-      <fog attach="fog" args={['#05060a', 16, 44]} />
+      <color attach="background" args={['#070b18']} />
+      <fog attach="fog" args={['#0b1122', 14, 40]} />
 
-      {/* Lights + glow */}
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[4, 8, 5]} intensity={1.2} />
-      <pointLight position={[-6, 3, -4]} intensity={40} decay={1.5} color="#4d7cff" />
-      <pointLight position={[6, 2, 4]} intensity={30} decay={1.5} color="#ff4d8d" />
-
-      {/* Ambience: starfield + sparkles */}
+      {/* Background depth: tinted nebula + starfield + sparkles */}
+      <NebulaBackground />
       <Stars radius={60} depth={40} count={2000} factor={3} saturation={0} fade speed={0.6} />
       <Sparkles count={120} scale={[14, 7, 14]} size={2.5} speed={0.35} opacity={0.55} color="#8ab4ff" />
 
-      <CameraRig camera={slide.camera} transition={slide.transition} />
+      {/* Lights + IBL reflections (Environment fails gracefully offline) */}
+      <ambientLight intensity={0.2} />
+      <directionalLight position={[4, 8, 5]} intensity={0.7} />
+      <pointLight position={[-6, 3, -4]} intensity={35} decay={1.5} color="#4d7cff" />
+      <pointLight position={[6, 2, 4]} intensity={28} decay={1.5} color="#ff4d8d" />
+      <LoadBoundary>
+        <Suspense fallback={null}>
+          <Environment preset="night" />
+        </Suspense>
+      </LoadBoundary>
+
+      <CameraRig
+        camera={slide.camera}
+        transition={slide.transition}
+        active={!freeLook}
+        onSettled={handleSettled}
+      />
+
+      {/* Free look: orbit + zoom between transitions. Zoom clamps keep the
+          camera out of objects and in the scene. */}
+      <OrbitControls
+        ref={controlsRef}
+        enabled={freeLook}
+        enablePan={false}
+        enableRotate
+        enableZoom
+        minDistance={2.5}
+        maxDistance={50}
+        minPolarAngle={0.08}
+        maxPolarAngle={Math.PI / 2.05}
+        target={slide.camera.lookAt}
+        enableDamping
+        dampingFactor={0.08}
+        makeDefault
+      />
+
       <Slide slide={slide} />
+
+      {/* Cinematic post — composer failures fall back to the plain scene */}
+      <LoadBoundary>
+        <Suspense fallback={null}>
+          <EffectComposer multisampling={4}>
+            <Bloom
+              mipmapBlur
+              intensity={0.85}
+              luminanceThreshold={0.85}
+              luminanceSmoothing={0.3}
+              radius={0.75}
+            />
+            <Vignette offset={0.28} darkness={0.8} />
+            <Noise premultiply opacity={0.035} />
+          </EffectComposer>
+        </Suspense>
+      </LoadBoundary>
     </Canvas>
   )
 }

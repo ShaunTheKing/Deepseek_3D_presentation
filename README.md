@@ -88,7 +88,39 @@ Real-model verification: *"What are Saturn's rings made of?"* → answer overlay
 ("Saturn's Ring Origins", "The Shattered Moon Theory") with GLBs and an image,
 all validating end-to-end.
 
-### 3D model credits
+### Cinematic upgrades (zoom + post-processing)
+
+- **Zoom / free-look** — after each transition the camera hands over to
+  `OrbitControls` (drag to orbit, wheel/pinch to zoom, damping on, pan off).
+  Zoom is clamped to **2.5–50** so you can never clip inside an object or lose
+  the scene. Controls **lock during transitions**; when the camera settles it
+  re-enables and re-syncs its target to the slide's `lookAt`. If you're zoomed
+  in when you press Next, the tween starts from your exact current view.
+  Keyboard `+`/`-` or the `−`/`+` buttons zoom too.
+- **Post-processing** (`@react-three/postprocessing`): Bloom (`mipmapBlur`,
+  tuned so only emissive objects glow), Vignette (darkness 0.8), film grain
+  (`Noise`, opacity 0.035). DepthOfField is intentionally **not** included —
+  it would risk dropping below 60fps on midrange hardware. If the composer
+  fails, the plain scene still renders.
+- **Environment** — `<Environment preset="night">` adds real reflections to
+  metal/emissive materials (fails gracefully offline); lights rebalanced
+  (ambient 0.2, directional 0.7).
+- **Background** — no more flat void: tinted fog + a back-side **nebula
+  gradient sphere** (cheap shader, slowly rotating) behind the starfield.
+- **Motion** — GSAP **staggered entrance** (objects scale in with a back ease,
+  ~80ms stagger); titles float gently via drei `<Float>`; tweens are killed on
+  unmount so regenerating decks don't leak.
+- **Typography** — Space Grotesk (OFL, bundled via `@fontsource`) with slight
+  `letterSpacing` on all drei `<Text>`.
+- **Materials** — primitives use `meshPhysicalMaterial` with clearcoat sheen
+  on metallic hero objects.
+- **Performance** — `dpr={[1, 2]}`, composer `multisampling={4}`, no DoF;
+  R3F auto-disposes geometries/materials on unmount.
+
+New dependencies: `gsap`, `@react-three/postprocessing` (+ `postprocessing`),
+`@fontsource/space-grotesk`.
+
+## 3D model credits
 
 All GLBs are from [Khronos glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets)
 and served via jsDelivr.
