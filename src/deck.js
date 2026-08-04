@@ -1,5 +1,6 @@
-// Fallback deck — renders without an API key and demonstrates every schema feature.
-// The LLM-generated decks (src/generator.js) follow the exact same shape.
+// Fallback deck — renders without an API key and demonstrates every schema
+// feature: text, primitives, glb catalog assets, 3D charts, AI image
+// backgrounds, all three transitions, and notes for narration.
 export const DECK = {
   title: 'The Solar System',
   slides: [
@@ -40,15 +41,39 @@ export const DECK = {
       transition: 'fly',
     },
     {
-      title: 'Beyond the Planets',
-      notes: 'Robotic explorers and the distant belt of ice and rock.',
-      camera: { position: [0, 3.2, 9], lookAt: [0, 0.2, 0], fov: 50 },
+      title: 'Planets by Size',
+      notes: 'Jupiter is over eleven times wider than Earth. This chart shows the planets in Earth diameters.',
+      camera: { position: [0, 2.4, 8.2], lookAt: [0, 1.1, 0], fov: 50 },
       objects: [
-        { type: 'text', content: 'Explorers & the Frontier', position: [0, 2.6, 0], fontSize: 0.95, color: '#ffffff', billboard: true },
-        { type: 'primitive', shape: 'box', position: [0, 0.9, 0], rotation: [0.3, 0.5, 0.1], scale: [1, 1.6, 1], color: '#9db4c0', metalness: 0.7, roughness: 0.25 },
-        { type: 'primitive', shape: 'sphere', position: [2.6, 0.6, 0.8], scale: [0.5, 0.5, 0.5], color: '#7a8b99', roughness: 0.9 },
-        { type: 'primitive', shape: 'sphere', position: [-2.7, 0.4, -0.6], scale: [0.4, 0.4, 0.4], color: '#8d99a6', roughness: 0.9 },
-        { type: 'primitive', shape: 'plane', position: [0, -0.3, 0], rotation: [-Math.PI / 2, 0, 0], scale: [12, 8, 1], color: '#0b101c', metalness: 0.4, roughness: 0.8 },
+        { type: 'image', prompt: 'deep space nebula, purple and blue, cinematic', position: [0, 1.8, -8], scale: [16, 9, 1], opacity: 0.45 },
+        { type: 'text', content: 'Planets by Size', position: [0, 3.4, 0], fontSize: 0.85, color: '#ffffff', billboard: true },
+        {
+          type: 'chart',
+          data: [
+            { label: 'Mercury', value: 0.38 },
+            { label: 'Mars', value: 0.53 },
+            { label: 'Venus', value: 0.95 },
+            { label: 'Earth', value: 1 },
+            { label: 'Neptune', value: 3.88 },
+            { label: 'Uranus', value: 4 },
+            { label: 'Saturn', value: 9.45 },
+            { label: 'Jupiter', value: 11.21 },
+          ],
+          position: [0, 0.3, 0],
+          scale: [1.02, 1.02, 1.02],
+        },
+      ],
+      transition: 'fade',
+    },
+    {
+      title: 'Into the Unknown',
+      notes: 'Robotic explorers have visited every planet in the solar system, and some have already left it far behind.',
+      camera: { position: [-1.2, 2.4, 8.5], lookAt: [0.4, 0.9, 0], fov: 50 },
+      objects: [
+        { type: 'image', prompt: 'alien planet horizon, foggy, cinematic', position: [0, 1.8, -8], scale: [16, 9, 1], opacity: 0.5 },
+        { type: 'text', content: 'Into the Unknown', position: [-2.4, 2.3, 0], fontSize: 0.9, color: '#ffffff', billboard: true },
+        { type: 'glb', assetId: 'sci-fi-helmet', position: [2.3, 0.8, 0], scale: 1.15 },
+        { type: 'primitive', shape: 'plane', position: [0, -0.2, 0], rotation: [-Math.PI / 2, 0, 0], scale: [12, 8, 1], color: '#0b101c', metalness: 0.4, roughness: 0.8 },
       ],
       transition: 'fade',
     },

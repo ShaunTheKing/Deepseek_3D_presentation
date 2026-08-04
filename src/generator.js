@@ -28,10 +28,36 @@ type Deck = {
       position: [number, number, number]; rotation?: [number, number, number];
       scale?: [number, number, number]; color: string;
       metalness?: number; roughness?: number; emissive?: string;
+    } | {
+      type: 'glb'; assetId: string; position: [number, number, number];
+      rotation?: [number, number, number]; scale?: number;
+    } | {
+      type: 'chart'; title?: string;
+      data: { label: string; value: number }[];
+      position: [number, number, number]; scale?: [number, number, number]; color?: string;
+    } | {
+      type: 'image'; prompt: string; position?: [number, number, number];
+      rotation?: [number, number, number]; scale?: [number, number, number]; opacity?: number;
     })[];
     transition: 'fly' | 'fade' | 'orbit';
   }[];
 }
+
+Rules for the new object types:
+- glb: use ONLY these assetIds (never invent URLs or other ids):
+  avocado: food,nature | antique-camera: camera,vintage | lantern: street,light |
+  water-bottle: bottle,drink | toy-car: car,vehicle | boom-box: music,retro |
+  flight-helmet: helmet,aviation | barramundi-fish: fish,ocean | corset: fashion |
+  sci-fi-helmet: helmet,space | animated-morph-cube: abstract,shape |
+  sheen-chair: furniture,room | metal-rough-spheres: material,abstract |
+  fox: animal,wildlife | box: shape,cargo | damaged-helmet: helmet,battle |
+  glam-velvet-sofa: furniture,sofa
+  Pick assets whose tags match the topic. Default scale 1 = a ~1.4-unit-tall object.
+- chart: 3D bar chart for statistics or comparisons. data: 1-12 entries of
+  { label: string, value: number }. Bars are auto-sized; values can be any scale.
+- image: a background plane generated from your prompt. Write a short cinematic
+  visual prompt (5-10 words), e.g. "fiery volcano eruption at night, cinematic".
+  Place it behind the scene (position z around -7). Do not use more than 1-2 images per deck.
 `
 
 // The model sometimes writes code-like literals (-Math.PI/2, Math.PI*2) instead of

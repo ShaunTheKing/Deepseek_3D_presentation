@@ -1,4 +1,6 @@
-// Deck schema validation — pure module (no imports) so it can be unit-tested
+import { CATALOG_IDS } from './catalog.js'
+
+// Deck schema validation — pure module (no DOM) so it can be unit-tested
 // and shared by the LLM generator without bundling tricks.
 
 const SHAPES = new Set(['box', 'sphere', 'torus', 'plane'])
@@ -48,8 +50,51 @@ export function validateDeck(deck) {
         if (obj.scale !== undefined && !isVec3(obj.scale)) {
           throw new Error(`${o}: scale must be an array of 3 numbers`)
         }
+      } else if (obj.type === 'glb') {
+        if (typeof obj.assetId !== 'string' || !CATALOG_IDS.has(obj.assetId)) {
+          throw new Error(
+            `${o}: glb needs a valid assetId from the catalog (got "${obj.assetId}")`,
+          )
+        }
+      } else if (obj.type === 'chart') {
+        if (!Array.isArray(obj.data) || obj.data.length < 1 || obj.data.length > 12) {
+          throw new Error(`${o}: chart needs a data array of 1-12 entries`)
+        }
+        obj.data.forEach((d, k) => {
+          if (
+            !d ||
+            typeof d.label !== 'string' ||
+            d.label.trim() === '' ||
+            typeof d.value !== 'number' ||
+            !Number.isFinite(d.value)
+          ) {
+            throw new Error(
+              `${o}, data ${k + 1}: each chart entry needs a non-empty label string and a finite numeric value`,
+            )
+          }
+        })
+      } else if (obj.type === 'image') {
+        if (typeof obj.prompt !== 'string' || obj.prompt.trim() === '') {
+          throw new Error(`${o}: image needs a non-empty prompt string`)
+        }
+        if (obj.opacity !== undefined && typeof obj.opacity !== 'number') {
+          throw new Error(`${o}: image opacity must be a number`)
+        }
       } else {
         throw new Error(`${o}: unknown object type "${obj.type}"`)
+      }
+      if (obj.type !== 'chart' && obj.rotation !== undefined && !isVec3(obj.rotation)) {
+        throw new Error(`${o}: rotation must be an array of 3 numbers`)
+      }
+      if (obj.scale !== undefined) {
+        if (obj.type === 'glb') {
+          // GLB scale is a scalar size multiplier on the auto-normalized model.
+          if (typeof obj.scale !== 'number' || !Number.isFinite(obj.scale)) {
+            throw new Error(`${o}: glb scale must be a finite number`)
+          }
+        } else if (!isVec3(obj.scale)) {
+          throw new Error(`${o}: scale must be an array of 3 numbers`)
+        }
       }
       if (!isVec3(obj.position)) throw new Error(`${o}: needs a position array of 3 numbers`)
     })

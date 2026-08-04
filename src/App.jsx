@@ -33,6 +33,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState(0)
   const [error, setError] = useState(null)
+  const [muted, setMuted] = useState(false)
   const slide = DECK.slides[idx]
 
   // Cycle loading stage messages while generating.
@@ -51,6 +52,7 @@ export default function App() {
 
   const generate = async () => {
     if (!topic.trim() || loading) return
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
     setLoading(true)
     setStage(0)
     setError(null)
@@ -100,6 +102,21 @@ export default function App() {
     const t = setTimeout(() => setFadeOut(false), 320)
     return () => clearTimeout(t)
   }, [idx, isFade])
+
+  // Narration: read the slide's notes aloud (speechSynthesis, muted toggle).
+  useEffect(() => {
+    if (muted || typeof speechSynthesis === 'undefined' || !slide?.notes) return
+    const t = setTimeout(() => {
+      speechSynthesis.cancel()
+      const u = new SpeechSynthesisUtterance(slide.notes)
+      u.rate = 1.02
+      speechSynthesis.speak(u)
+    }, 450)
+    return () => {
+      clearTimeout(t)
+      if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+    }
+  }, [idx, muted, slide])
 
   return (
     <div
@@ -254,6 +271,14 @@ export default function App() {
 
       {/* Navigation */}
       <div style={{ position: 'absolute', bottom: 20, right: 24, display: 'flex', gap: 8 }}>
+        <button
+          style={{ ...btn, opacity: muted ? 0.6 : 1 }}
+          onClick={() => setMuted((m) => !m)}
+          disabled={loading}
+          title={muted ? 'Unmute narration' : 'Mute narration'}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
         <button style={btn} onClick={() => go(-1)} disabled={idx === 0 || loading}>
           ‹ Prev
         </button>

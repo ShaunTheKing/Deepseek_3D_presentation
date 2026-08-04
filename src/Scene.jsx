@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import React, { Suspense, useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Billboard, Sparkles, Stars, Text } from '@react-three/drei'
+import { Billboard, Sparkles, Stars, Text, useGLTF, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
+import { CATALOG_BY_ID } from './catalog'
 
 // --- Camera rig: cinematically flies (or orbits / fades) between slides ----------
 function CameraRig({ camera, transition }) {
@@ -66,6 +67,17 @@ function CameraRig({ camera, transition }) {
   return null
 }
 
+// --- Error boundary: one failing GLB/image must never blank the whole app --------
+class LoadBoundary extends React.Component {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
+
 // --- Objects ---------------------------------------------------------------------
 function TextObject({ obj }) {
   const text = (
@@ -109,16 +121,147 @@ function PrimitiveObject({ obj }) {
   )
 }
 
+// Normalize any GLB to ~1.4 units tall, then apply the AI's scale multiplier.
+function useNormalizedScale(scene, obj) {
+  return useMemo(() => {
+    const box = new THREE.Box3().setFromObject(scene)
+    const size = box.getSize(new THREE.Vector3())
+    const max = Math.max(size.x, size.y, size.z, 1e-6)
+    return (1.4 / max) * (obj.scale ?? 1)
+  }, [scene, obj.scale])
+}
+
+function GlbObject({ obj }) {
+  const entry = CATALOG_BY_ID[obj.assetId]
+  const { scene } = useGLTF(entry.url)
+  const scale = useNormalizedScale(scene, obj)
+  return (
+    <primitive
+      object={scene}
+      position={obj.position}
+      rotation={obj.rotation ?? [0, 0, 0]}
+      scale={scale}
+    />
+  )
+}
+
+const CHART_COLORS = ['#4d7cff', '#ff4d8d', '#ffb703', '#3ddc84', '#b388ff', '#26c6da']
+
+function ChartObject({ obj }) {
+  const max = Math.max(...obj.data.map((d) => d.value), 1)
+  const barH = (v) => (v / max) * 2.6
+  return (
+    <group position={obj.position} scale={obj.scale ?? [1, 1, 1]}>
+      {obj.data.map((d, i) => {
+        const h = barH(d.value)
+        const x = (i - (obj.data.length - 1) / 2) * 1.15
+        const color = obj.color ?? CHART_COLORS[i % CHART_COLORS.length]
+        return (
+          <group key={i} position={[x, 0, 0]}>
+            <mesh position={[0, h / 2 + 0.04, 0]}>
+              <boxGeometry args={[0.8, h, 0.8]} />
+              <meshStandardMaterial
+                color={color}
+                metalness={0.15}
+                roughness={0.4}
+                emissive={color}
+                emissiveIntensity={0.18}
+              />
+            </mesh>
+            <Text
+              position={[0, -0.34, 0]}
+              fontSize={0.28}
+              color="#ffffff"
+              anchorX="center"
+              anchorY="top"
+              maxWidth={1.6}
+            >
+              {d.label}
+            </Text>
+          </group>
+        )
+      })}
+      {obj.title && (
+        <Text
+          position={[0, 3.15, 0]}
+          fontSize={0.45}
+          color="#ffffff"
+          anchorX="center"
+          anchorY="bottom"
+        >
+          {obj.title}
+        </Text>
+      )}
+      <mesh
+        position={[0, 0, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[(obj.data.length - 1) * 1.15 + 1.3, 2.4, 1]}
+      >
+        <planeGeometry />
+        <meshStandardMaterial color="#0d1424" metalness={0.3} roughness={0.8} />
+      </mesh>
+    </group>
+  )
+}
+
+function ImageObject({ obj }) {
+  const url =
+    'https://image.pollinations.ai/prompt/' +
+    encodeURIComponent(obj.prompt) +
+    '?width=1280&height=720&nologo=true'
+  const texture = useTexture(url)
+  return (
+    <mesh
+      position={obj.position ?? [0, 1.6, -7]}
+      rotation={obj.rotation ?? [0, 0, 0]}
+      scale={obj.scale ?? [14, 7.875, 1]}
+    >
+      <planeGeometry />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        opacity={obj.opacity ?? 0.85}
+        toneMapped={false}
+      />
+    </mesh>
+  )
+}
+
+function SlideObject({ obj }) {
+  switch (obj.type) {
+    case 'text':
+      return <TextObject obj={obj} />
+    case 'primitive':
+      return <PrimitiveObject obj={obj} />
+    case 'glb':
+      return (
+        <LoadBoundary>
+          <Suspense fallback={null}>
+            <GlbObject obj={obj} />
+          </Suspense>
+        </LoadBoundary>
+      )
+    case 'chart':
+      return <ChartObject obj={obj} />
+    case 'image':
+      return (
+        <LoadBoundary>
+          <Suspense fallback={null}>
+            <ImageObject obj={obj} />
+          </Suspense>
+        </LoadBoundary>
+      )
+    default:
+      return null
+  }
+}
+
 function Slide({ slide }) {
   return (
     <group>
-      {slide.objects.map((obj, i) =>
-        obj.type === 'text' ? (
-          <TextObject key={i} obj={obj} />
-        ) : (
-          <PrimitiveObject key={i} obj={obj} />
-        ),
-      )}
+      {slide.objects.map((obj, i) => (
+        <SlideObject key={i} obj={obj} />
+      ))}
     </group>
   )
 }
@@ -171,7 +314,7 @@ export default function Scene({ slide }) {
       fallback={<WebGLFallback />}
     >
       <color attach="background" args={['#05060a']} />
-      <fog attach="fog" args={['#05060a', 14, 42]} />
+      <fog attach="fog" args={['#05060a', 16, 44]} />
 
       {/* Lights + glow */}
       <ambientLight intensity={0.35} />
