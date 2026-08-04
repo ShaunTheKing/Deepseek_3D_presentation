@@ -74,6 +74,9 @@ export function validateDeck(deck) {
     if (!slide.camera || !isVec3(slide.camera.position) || !isVec3(slide.camera.lookAt)) {
       throw new Error(`${at}: camera needs position and lookAt arrays of 3 numbers`)
     }
+    if (slide.camera.fov !== undefined && typeof slide.camera.fov !== 'number') {
+      throw new Error(`${at}: camera fov must be a number`)
+    }
     if (!Array.isArray(slide.objects)) throw new Error(`${at}: missing objects array`)
     slide.objects.forEach((obj, j) => {
       const o = `${at}, object ${j + 1}`
@@ -84,6 +87,12 @@ export function validateDeck(deck) {
       } else if (obj.type === 'primitive') {
         if (!SHAPES.has(obj.shape) || typeof obj.color !== 'string') {
           throw new Error(`${o}: primitive needs a valid shape and color`)
+        }
+        if (obj.rotation !== undefined && !isVec3(obj.rotation)) {
+          throw new Error(`${o}: rotation must be an array of 3 numbers`)
+        }
+        if (obj.scale !== undefined && !isVec3(obj.scale)) {
+          throw new Error(`${o}: scale must be an array of 3 numbers`)
         }
       } else {
         throw new Error(`${o}: unknown object type "${obj.type}"`)
