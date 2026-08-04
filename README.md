@@ -6,21 +6,28 @@ primitives + camera moves) from a one-line topic, rendered with Three.js.
 ## Quick start
 
 ```bash
-# 1. Activate the project conda env (contains Node + npm)
+Activate the project conda env (it contains Node + npm), then install dependencies
+(first time only). Copy the example env file, then edit `.env` and put your real
+key in (`VITE_DEEPSEEK_API_KEY=sk-...` from platform.deepseek.com → API Keys).
+
+```
 conda activate /Users/shauntheking/Projects/Deepseek_3D_presentation/.conda/AIP
-
-# 2. Install dependencies
 npm install
-
-# 3. Add your DeepSeek API key (optional for the demo deck — required for Generate)
 cp .env.example .env
-# edit .env → VITE_DEEPSEEK_API_KEY=sk-...
+npm run dev
+```
 
-# 4. Run
-npm run dev        # dev server → http://localhost:5173
-npm test           # schema validation tests (node --test)
-npm run build      # production build → dist/
-npm run preview    # serve the production build
+Then open http://localhost:5173.
+
+Other commands: `npm test` (schema validation tests), `npm run build`
+(production build → `dist/`), `npm run preview` (serve the build).
+
+> ⚠️ If you paste commands into zsh, keep `#` out of pasted lines — interactive
+> zsh does not always treat `#` as a comment, so `cmd # note` can corrupt the
+> command (a stray `#` arg made Vite serve from a wrong root and show a blank
+> page). Paste only the plain commands above.
+
+
 ```
 
 No API key? The app still runs — it renders the fallback demo deck (`src/deck.js`,

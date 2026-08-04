@@ -123,13 +123,52 @@ function Slide({ slide }) {
   )
 }
 
+function WebGLFallback() {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        color: 'rgba(255,255,255,0.85)',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        textAlign: 'center',
+        padding: 24,
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 700 }}>3D rendering unavailable</div>
+      <div style={{ fontSize: 14, opacity: 0.7, maxWidth: 480 }}>
+        Your browser blocked WebGL, which the 3D scene needs. Enable hardware
+        acceleration (Chrome → Settings → System) or try Safari / Chrome, then
+        reload.
+      </div>
+    </div>
+  )
+}
+
 // --- Scene -----------------------------------------------------------------------
 export default function Scene({ slide }) {
+  const webglOK = (() => {
+    try {
+      const c = document.createElement('canvas')
+      return !!(c.getContext('webgl2') || c.getContext('webgl'))
+    } catch {
+      return false
+    }
+  })()
+
+  if (!webglOK) return <WebGLFallback />
+
   return (
     <Canvas
       dpr={[1, 2]}
       gl={{ antialias: true }}
       camera={{ position: [0, 2.6, 9.5], fov: 50 }}
+      fallback={<WebGLFallback />}
     >
       <color attach="background" args={['#05060a']} />
       <fog attach="fog" args={['#05060a', 14, 42]} />
