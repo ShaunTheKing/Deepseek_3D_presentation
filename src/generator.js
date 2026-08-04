@@ -73,19 +73,145 @@ export function sanitizeLLMJson(content) {
   )
 }
 
-// Accept the shape aliases models love to use; the renderer only ever sees
-// canonical shapes.
+// Accept the shape aliases and shorthands models love to use; the renderer only
+// ever sees canonical objects.
 const SHAPE_ALIASES = { cube: 'box', ring: 'torus' }
+const SHAPE_SHORTHAND = new Set(['box', 'sphere', 'torus', 'plane'])
 
 export function normalizeDeck(deck) {
   for (const slide of deck.slides) {
     for (const obj of slide.objects) {
       if (obj.type === 'primitive' && SHAPE_ALIASES[obj.shape]) {
         obj.shape = SHAPE_ALIASES[obj.shape]
+      } else if (SHAPE_SHORTHAND.has(obj.type)) {
+        // The model sometimes writes { type: 'torus' } instead of
+        // { type: 'primitive', shape: 'torus' }.
+        obj.shape = obj.type
+        obj.type = 'primitive'
       }
     }
   }
   return deck
+}
+
+export const ROUTER_PROMPT = `
+You are the live-adaptation router for a 3D presentation.
+A viewer asks a question while a slide is showing. Decide how to respond:
+- "insert": the question deserves 1-2 new slides woven into the deck right after
+  the current slide (a new subtopic, a deeper dive, "tell me more about X").
+- "answer": a 1-2 sentence spoken answer is enough (a quick fact or clarification).
+Output ONLY raw JSON: {"mode":"insert"} or {"mode":"answer","answer":"..."}.
+`
+
+function deckContext(deck, slideIdx) {
+  const titles = deck.slides.map((s, i) => `${i + 1}. ${s.title}`).join(' | ')
+  return `Deck: "${deck.title}". Slides: ${titles}. Currently showing slide ${slideIdx + 1} (${deck.slides[slideIdx]?.title}).`
+}
+
+// Phase 4: decide whether a viewer question becomes new slides or a quick answer.
+export async function routeQuestion(question, deck, slideIdx, retryHint) {
+  const userContent = retryHint
+    ? `${deckContext(deck, slideIdx)} Viewer question: "${question}". Your previous response was rejected: ${retryHint} — output only the required JSON.`
+    : `${deckContext(deck, slideIdx)} Viewer question: "${question}".`
+
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + API_KEY,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: ROUTER_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    }),
+  })
+
+  if (!res.ok) throw new Error('Router API error ' + res.status)
+  const data = await res.json()
+
+  let d
+  try {
+    d = JSON.parse(sanitizeLLMJson(data.choices[0].message.content))
+  } catch (e) {
+    if (retryHint) throw new Error('Router returned invalid JSON twice: ' + e.message)
+    return routeQuestion(
+      question,
+      deck,
+      slideIdx,
+      'the previous output was not valid JSON — output plain JSON only',
+    )
+  }
+
+  if (d.mode === 'answer') {
+    if (typeof d.answer !== 'string' || d.answer.trim() === '') {
+      throw new Error('Router returned an empty answer')
+    }
+    return { mode: 'answer', answer: d.answer.trim() }
+  }
+  if (d.mode === 'insert') return { mode: 'insert' }
+
+  if (retryHint) throw new Error('Router returned an unknown mode twice: ' + d.mode)
+  return routeQuestion(
+    question,
+    deck,
+    slideIdx,
+    `the previous mode "${d.mode}" is invalid — use only "insert" or "answer"`,
+  )
+}
+
+// Phase 4: generate 1-2 slides to splice into the deck after the current slide.
+export async function generateInsertSlides(question, deck, slideIdx, retryHint) {
+  const userContent = retryHint
+    ? `A viewer asked: "${question}". Insert 1-2 new slides right after slide ${slideIdx + 1} of ${deckContext(deck, slideIdx)} Your previous response was rejected: ${retryHint} — fix every problem. Output ONLY raw JSON: {"slides":[{title, notes, camera, objects, transition}, ...]}`
+    : `A viewer asked: "${question}". Insert 1-2 new slides right after slide ${slideIdx + 1} of ${deckContext(deck, slideIdx)} Output ONLY raw JSON: {"slides":[{title, notes, camera, objects, transition}, ...]}`
+
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + API_KEY,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+    }),
+  })
+
+  if (!res.ok) throw new Error('Insert API error ' + res.status)
+  const data = await res.json()
+
+  let d
+  try {
+    d = JSON.parse(sanitizeLLMJson(data.choices[0].message.content))
+  } catch (e) {
+    if (retryHint) throw new Error('Insert returned invalid JSON twice: ' + e.message)
+    return generateInsertSlides(
+      question,
+      deck,
+      slideIdx,
+      'the previous output was not valid JSON — output plain JSON numbers only, never expressions like Math.PI',
+    )
+  }
+
+  const sub = { title: deck.title, slides: d.slides }
+  if (Array.isArray(sub.slides) && sub.slides.length > 2) sub.slides = sub.slides.slice(0, 2)
+  try {
+    validateDeck(sub)
+  } catch (e) {
+    if (retryHint) throw new Error('Insert returned invalid slides twice: ' + e.message)
+    return generateInsertSlides(question, deck, slideIdx, e.message)
+  }
+  return sub
 }
 
 export async function generateDeck(topic, retryHint) {

@@ -205,11 +205,7 @@ function ChartObject({ obj }) {
 }
 
 function ImageObject({ obj }) {
-  const url =
-    'https://image.pollinations.ai/prompt/' +
-    encodeURIComponent(obj.prompt) +
-    '?width=1280&height=720&nologo=true'
-  const texture = useTexture(url)
+  const texture = useTexture(imageUrl(obj.prompt))
   return (
     <mesh
       position={obj.position ?? [0, 1.6, -7]}
@@ -225,6 +221,30 @@ function ImageObject({ obj }) {
       />
     </mesh>
   )
+}
+
+// Pollinations URL for an image prompt (shared by rendering and preloading).
+export function imageUrl(prompt) {
+  return (
+    'https://image.pollinations.ai/prompt/' +
+    encodeURIComponent(prompt) +
+    '?width=1280&height=720&nologo=true'
+  )
+}
+
+// Phase 4: warm the caches for GLBs and images in a freshly generated sub-deck,
+// so the camera fly to a spliced slide never waits on network loads.
+export function preloadAssets(deck) {
+  for (const slide of deck.slides) {
+    for (const obj of slide.objects) {
+      if (obj.type === 'glb') {
+        const entry = CATALOG_BY_ID[obj.assetId]
+        if (entry) useGLTF.preload(entry.url)
+      } else if (obj.type === 'image') {
+        useTexture.preload(imageUrl(obj.prompt))
+      }
+    }
+  }
 }
 
 function SlideObject({ obj }) {

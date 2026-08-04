@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DECK as FALLBACK_DECK } from './deck'
-import { generateDeck } from './generator'
+import { generateDeck, routeQuestion, generateInsertSlides } from './generator'
 import { loadHistory, saveToHistory, clearHistory } from './history'
-import Scene from './Scene'
+import Scene, { preloadAssets } from './Scene'
 
 const btn = {
   padding: '8px 14px',
@@ -34,6 +34,10 @@ export default function App() {
   const [stage, setStage] = useState(0)
   const [error, setError] = useState(null)
   const [muted, setMuted] = useState(false)
+  const [ask, setAsk] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [answer, setAnswer] = useState(null)
+  const askRef = useRef(null)
   const slide = DECK.slides[idx]
 
   // Cycle loading stage messages while generating.
@@ -76,6 +80,33 @@ export default function App() {
     setShowHistory(false)
   }
 
+  // Phase 4: live adaptation — router decides insert vs answer overlay.
+  const askQuestion = async () => {
+    const q = ask.trim()
+    if (!q || asking || loading) return
+    setAsking(true)
+    setError(null)
+    try {
+      const decision = await routeQuestion(q, DECK, idx)
+      if (decision.mode === 'answer') {
+        setAnswer(decision.answer)
+      } else {
+        const sub = await generateInsertSlides(q, DECK, idx)
+        preloadAssets(sub)
+        const newSlides = [...DECK.slides.slice(0, idx + 1), ...sub.slides, ...DECK.slides.slice(idx + 1)]
+        const spliced = { ...DECK, slides: newSlides }
+        setDeck(spliced)
+        setIdx(idx + 1) // camera flies to the first spliced slide
+        setGenerated(true)
+        setHistoryList(saveToHistory({ topic: DECK.title + ' + live', deck: spliced, ts: Date.now() }))
+        setAsk('')
+      }
+    } catch (e) {
+      setError('Ask failed: ' + e.message)
+    }
+    setAsking(false)
+  }
+
   const go = (dir) =>
     setIdx((i) => Math.max(0, Math.min(DECK.slides.length - 1, i + dir)))
 
@@ -83,7 +114,14 @@ export default function App() {
     const onKey = (e) => {
       if (e.key === 'ArrowRight') go(1)
       if (e.key === 'ArrowLeft') go(-1)
-      if (e.key === 'Escape') setShowHistory(false)
+      if (e.key === 'Escape') {
+        setShowHistory(false)
+        setAnswer(null)
+      }
+      if (e.key === '/' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault()
+        askRef.current?.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -252,6 +290,77 @@ export default function App() {
               Clear history
             </button>
           )}
+        </div>
+      )}
+
+      {/* Ask bar — live adaptation */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          gap: 8,
+        }}
+      >
+        <input
+          ref={askRef}
+          value={ask}
+          onChange={(e) => setAsk(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && askQuestion()}
+          placeholder="Ask the deck… ( / )"
+          disabled={asking || loading}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.25)',
+            background: 'rgba(0,0,0,0.5)',
+            color: 'white',
+            width: 260,
+            outline: 'none',
+          }}
+        />
+        <button
+          style={{ ...btn, opacity: asking || loading ? 0.6 : 1 }}
+          onClick={askQuestion}
+          disabled={asking || loading || !ask.trim()}
+        >
+          {asking ? 'Thinking…' : 'Ask'}
+        </button>
+      </div>
+
+      {/* Live answer overlay */}
+      {answer && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(5,6,10,0.55)',
+            zIndex: 25,
+          }}
+          onClick={() => setAnswer(null)}
+        >
+          <div
+            style={{
+              maxWidth: 560,
+              background: 'rgba(15,18,28,0.96)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: 14,
+              padding: '22px 26px',
+              color: 'white',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 8 }}>Live answer</div>
+            <div style={{ fontSize: 16, lineHeight: 1.55 }}>{answer}</div>
+            <button style={{ ...btn, marginTop: 16 }} onClick={() => setAnswer(null)}>
+              Got it
+            </button>
+          </div>
         </div>
       )}
 

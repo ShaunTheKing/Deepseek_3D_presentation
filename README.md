@@ -68,6 +68,26 @@ Test topics from the plan: *"How volcanoes erupt"*, *"The Roman Empire"*,
 - **Narration** — each slide's `notes` are read aloud with `speechSynthesis`
   (toggle with the 🔊/🔇 button; browsers may require a first click).
 
+## Phase 4 — Live Adaptation (your differentiator)
+
+Type a question into the **Ask** bar (bottom center, or press `/`) during a
+presentation. The flow:
+
+1. `routeQuestion` — a cheap router call (temperature 0.3) decides:
+   - `{"mode":"answer","answer":"..."}` — a quick fact → shown as a **Live
+     answer overlay** (dismiss with × / Escape / click outside); the deck is
+     untouched.
+   - `{"mode":"insert"}` — a deeper dive → `generateInsertSlides` produces
+     **1–2 validated slides** (same schema pipeline, retry-once), truncated to 2.
+2. `preloadAssets` warms the GLB/image caches so the spliced slide never waits.
+3. The new slides are **spliced right after the current one**, the camera flies
+   there (`setIdx`), and the updated deck is saved to history.
+
+Real-model verification: *"What are Saturn's rings made of?"* → answer overlay;
+*"Tell me more about how Saturn's rings formed"* → 2 inserted slides
+("Saturn's Ring Origins", "The Shattered Moon Theory") with GLBs and an image,
+all validating end-to-end.
+
 ### 3D model credits
 
 All GLBs are from [Khronos glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets)
