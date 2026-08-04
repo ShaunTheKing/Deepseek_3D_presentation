@@ -18,6 +18,7 @@ cp .env.example .env
 
 # 4. Run
 npm run dev        # dev server → http://localhost:5173
+npm test           # schema validation tests (node --test)
 npm run build      # production build → dist/
 npm run preview    # serve the production build
 ```
