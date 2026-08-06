@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { DECK as FALLBACK_DECK } from './deck'
-import { generateDeck, routeQuestion, generateInsertSlides } from './generator'
+import { generateDeck, routeQuestion, generateInsertSlides, normalizeDeck } from './generator'
 import { loadHistory, saveToHistory, clearHistory } from './history'
 import Scene, { controlsAPI, preloadAssets } from './Scene'
 
@@ -22,10 +22,17 @@ const STAGES = [
   'Polishing lighting…',
 ]
 
+// Single choke point: every deck this app renders goes through normalizeDeck,
+// so history entries, fallback, and new generations all obey the same layout.
+const prep = normalizeDeck
+
 export default function App() {
   const [boot] = useState(loadHistory)
   const [idx, setIdx] = useState(0)
-  const [DECK, setDeck] = useState(boot[0]?.deck ?? FALLBACK_DECK)
+  const [DECK, setDeck] = useState(() => {
+    if (boot.length > 0 && boot[0]?.deck) return prep(boot[0].deck)
+    return FALLBACK_DECK
+  })
   const [generated, setGenerated] = useState(boot.length > 0)
   const [historyList, setHistoryList] = useState(boot)
   const [showHistory, setShowHistory] = useState(false)
@@ -62,7 +69,7 @@ export default function App() {
     setError(null)
     try {
       const d = await generateDeck(topic.trim())
-      setDeck(d)
+      setDeck(prep(d))
       setIdx(0)
       setGenerated(true)
       setHistoryList(saveToHistory({ topic: topic.trim(), deck: d, ts: Date.now() }))
@@ -73,7 +80,7 @@ export default function App() {
   }
 
   const loadFromHistory = (entry) => {
-    setDeck(entry.deck)
+    setDeck(prep(entry.deck))
     setIdx(0)
     setTopic(entry.topic)
     setGenerated(true)
@@ -94,7 +101,7 @@ export default function App() {
         const sub = await generateInsertSlides(q, DECK, idx)
         preloadAssets(sub)
         const newSlides = [...DECK.slides.slice(0, idx + 1), ...sub.slides, ...DECK.slides.slice(idx + 1)]
-        const spliced = { ...DECK, slides: newSlides }
+        const spliced = prep({ ...DECK, slides: newSlides })
         setDeck(spliced)
         setIdx(idx + 1) // camera flies to the first spliced slide
         setGenerated(true)

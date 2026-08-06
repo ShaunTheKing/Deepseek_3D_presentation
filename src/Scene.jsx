@@ -22,6 +22,7 @@ import { Bloom, EffectComposer, Noise, Vignette } from '@react-three/postprocess
 import gsap from 'gsap'
 import * as THREE from 'three'
 import { CATALOG_BY_ID } from './catalog'
+import { LAYOUT_MAX_W } from './generator'
 import fontUrl from '@fontsource/space-grotesk/files/space-grotesk-latin-400-normal.woff'
 
 // Bridge so the App can trigger zoom without reaching into the Canvas.
@@ -199,7 +200,7 @@ function TextObject({ obj }) {
       position={obj.position}
       fontSize={obj.fontSize}
       color={obj.color ?? '#ffffff'}
-      maxWidth={12}
+      maxWidth={LAYOUT_MAX_W}
       anchorX="center"
       anchorY="middle"
       font={fontUrl}

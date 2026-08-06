@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { enforceLayout } from '../src/generator.js'
+import { enforceLayout, LAYOUT_LINE_H, LAYOUT_GAP } from '../src/generator.js'
 
 const slide = () => ({
   title: 's',
@@ -17,20 +17,48 @@ const slide = () => ({
   transition: 'fly',
 })
 
-test('text objects stack in the left column, biggest first, never at the same y', () => {
+test('text objects stack top-left, biggest first, anchorY-middle gap preserved', () => {
   const d = { title: 't', slides: [slide()] }
   enforceLayout(d)
   const texts = d.slides[0].objects.filter((o) => o.type === 'text')
   assert.equal(texts.length, 2)
-  for (const t of texts) {
-    assert.equal(t.position[0], -3.4)
-    assert.equal(t.position[2], 0)
-  }
-  // title (fs 1.1) above body (fs 0.5, 2 lines), gap = fs*lines*1.35 + 0.5
   const [title, body] = texts
-  assert.ok(title.position[1] > body.position[1])
-  const gap = title.position[1] - body.position[1]
-  assert.ok(Math.abs(gap - 1.985) < 1e-9, `expected gap 1.985, got ${gap}`)
+
+  // title: fs 1.1, 1 line → h = 1.1 * 1.35 * 1 = 1.485; position at top - h/2
+  const titleH = 1.1 * LAYOUT_LINE_H * 1
+  assert.deepEqual(title.position, [-3.4, +(2.6 - titleH / 2).toFixed(5), 0])
+
+  // body: fs 0.5, 2 literal '\n' lines (each short) → h = 0.5 * 1.35 * 2 = 1.35
+  const bodyH = 0.5 * LAYOUT_LINE_H * 2
+  // top after title = 2.6 - titleH - GAP = 2.6 - 1.485 - 0.5 = 0.615
+  const bodyTop = 2.6 - titleH - LAYOUT_GAP
+  assert.deepEqual(body.position, [-3.4, +(bodyTop - bodyH / 2).toFixed(5), 0])
+
+  const gap = title.position[1] - titleH / 2 - (body.position[1] + bodyH / 2)
+  assert.ok(Math.abs(gap - LAYOUT_GAP) < 1e-9, `expected gap ${LAYOUT_GAP}, got ${gap}`)
+})
+
+test('wrapping titles (long text that exceeds maxWidth) are correctly line-counted', () => {
+  // "Black Hole Formation" at fs 1.1 → 21 chars → perLine ≈ 17 → 2 wrapped lines
+  const s = slide()
+  s.objects[0].content = 'Black Hole Formation' // title, overwrite
+  s.objects[1].content = 'Subtitle' // short body
+  s.objects[1].fontSize = 0.5
+  const d = { title: 't', slides: [s] }
+  enforceLayout(d)
+  const [title, subtitle] = d.slides[0].objects.filter((o) => o.type === 'text')
+
+  // title at 2.6 - h/2; h = 1.1 * 1.35 * 2 = 2.97 (2 wrapped lines)
+  const titleH = 1.1 * LAYOUT_LINE_H * 2
+  assert.deepEqual(title.position, [-3.4, +(2.6 - titleH / 2).toFixed(5), 0])
+
+  const subH = 0.5 * LAYOUT_LINE_H * 1 // "Subtitle" is short → 1 line
+  const subTop = 2.6 - titleH - LAYOUT_GAP
+  assert.deepEqual(subtitle.position, [-3.4, +(subTop - subH / 2).toFixed(5), 0])
+
+  // gap preserved despite the wrapping estimate
+  const gap = title.position[1] - titleH / 2 - (subtitle.position[1] + subH / 2)
+  assert.ok(Math.abs(gap - LAYOUT_GAP) < 1e-9)
 })
 
 test('solid objects grid on the right, at least 2.5 units from the text column', () => {

@@ -118,6 +118,10 @@ export function sanitizeLLMJson(content) {
     })
 }
 
+export const LAYOUT_MAX_W = 12 // keep in sync with <Text maxWidth> in Scene.jsx
+export const LAYOUT_LINE_H = 1.35
+export const LAYOUT_GAP = 0.5
+
 // Accept the shape aliases and shorthands models love to use; the renderer only
 // ever sees canonical objects.
 const SHAPE_ALIASES = { cube: 'box', ring: 'torus' }
@@ -150,14 +154,14 @@ export function enforceLayout(deck) {
     const charts = slide.objects.filter((o) => o.type === 'chart')
     const imgs = slide.objects.filter((o) => o.type === 'image')
 
-    // 1. Text: stack top-left, biggest (title) first, spacing by line count.
+    // 1. Text: stack top-left, biggest (title) first, anchorY-aware with
+    //    a wrapping-line estimate (maxWidth matters — split('\n') is not enough).
     texts.sort((a, b) => (b.fontSize || 0.5) - (a.fontSize || 0.5))
-    let y = 2.6
+    let top = 2.6 // top edge of the first block
     for (const t of texts) {
-      const fs = t.fontSize || 0.5
-      const lines = String(t.content).split('\n').length
-      t.position = [-3.4, y, 0]
-      y -= fs * lines * 1.35 + 0.5 // block height + gap
+      const h = (t.fontSize || 0.5) * LAYOUT_LINE_H * textLines(t)
+      t.position = [-3.4, +(top - h / 2).toFixed(5), 0]
+      top -= h + LAYOUT_GAP
     }
 
     // 2. Models: right/lower area, grid-spaced, far from the text column.
@@ -174,6 +178,15 @@ export function enforceLayout(deck) {
     for (const im of imgs) im.position = [0, 0.5, -7]
   }
   return deck
+}
+
+// Estimate wrapped line count (maxWidth=LAYOUT_MAX_W, glyph advance ≈ fs * 0.62).
+function textLines(t) {
+  const fs = t.fontSize || 0.5
+  const perLine = Math.max(6, Math.floor(LAYOUT_MAX_W / (fs * 0.62)))
+  return String(t.content)
+    .split('\n')
+    .reduce((n, l) => n + Math.max(1, Math.ceil(l.trim().length / perLine)), 0)
 }
 
 export const ROUTER_PROMPT = `
