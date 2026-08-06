@@ -8,9 +8,9 @@ primitives + camera moves) from a one-line topic, rendered with Three.js.
 ```bash
 Activate the project conda env (it contains Node + npm), then install dependencies
 (first time only). Copy the example env file, then edit `.env` and put your
-OpenRouter key in (`VITE_OPENROUTER_API_KEY=sk-or-v1-...` from openrouter.ai → Keys).
-The default model is the free `nvidia/nemotron-3-ultra-550b-a55b:free`; override
-with `VITE_LLM_MODEL`, or keep a `VITE_DEEPSEEK_API_KEY` as a fallback provider.
+OpenRouter key in (`VITE_OPENROUTER_API_KEY=sk-or-v1-...` from openrouter.ai → Keys),
+then **restart the dev server** (Vite reads `.env` at startup). The default model
+is the free `nvidia/nemotron-3-ultra-550b-a55b:free`; override with `VITE_LLM_MODEL`.
 
 ```
 conda activate /Users/shauntheking/Projects/Deepseek_3D_presentation/.conda/AIP

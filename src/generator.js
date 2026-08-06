@@ -2,17 +2,22 @@ import { validateDeck } from './schema.js'
 
 // ⚠️ Testing only — Phase 5 moves this behind a server proxy.
 // Provider: OpenRouter (OpenAI-compatible endpoint). Set VITE_OPENROUTER_API_KEY
-// in a local .env file (see .env.example). VITE_DEEPSEEK_API_KEY still works as a
-// fallback. Optional chaining keeps this module importable in plain Node for tests.
-const API_KEY =
-  import.meta.env?.VITE_OPENROUTER_API_KEY ||
-  import.meta.env?.VITE_DEEPSEEK_API_KEY ||
-  'sk-or-paste-your-key-here'
+// in a local .env file (see .env.example), then RESTART the dev server — Vite
+// only reads .env at startup. Optional chaining keeps this module importable
+// in plain Node for unit tests.
+const API_KEY = import.meta.env?.VITE_OPENROUTER_API_KEY || 'sk-or-paste-your-key-here'
 
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const MODEL = import.meta.env?.VITE_LLM_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free'
 
 async function chat(messages, temperature) {
+  // Friendly error instead of a confusing 401 when the key is missing, typo'd,
+  // or still the placeholder. Skipped in Node (unit tests mock fetch).
+  if (import.meta.env && !API_KEY.startsWith('sk-or-v1-')) {
+    throw new Error(
+      'Invalid API key — set VITE_OPENROUTER_API_KEY=sk-or-v1-... in .env, then restart the dev server',
+    )
+  }
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
