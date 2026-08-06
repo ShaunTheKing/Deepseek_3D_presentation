@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateDeck, sanitizeLLMJson, normalizeDeck, routeQuestion, generateInsertSlides } from '../src/generator.js'
+import { generateDeck, sanitizeLLMJson, normalizeDeck, routeQuestion, generateInsertSlides, SYSTEM_PROMPT } from '../src/generator.js'
 import { validateDeck } from '../src/schema.js'
 
 const goodSlide = {
@@ -74,6 +74,11 @@ test('sanitizeLLMJson strips markdown fences around the JSON', () => {
   assert.equal(sanitizeLLMJson('```json\n{"a":1}\n```'), '{"a":1}')
   assert.equal(sanitizeLLMJson('```\n{"a":1}\n```'), '{"a":1}')
   assert.equal(sanitizeLLMJson('{"a":1}'), '{"a":1}')
+})
+
+test('SYSTEM_PROMPT instructs the model to prefer glb objects over primitives', () => {
+  assert.match(SYSTEM_PROMPT, /Prefer 'glb' objects over 'primitive' shapes/)
+  assert.match(SYSTEM_PROMPT, /assetId whose tags best match the slide's topic/)
 })
 
 test('a fenced-JSON response parses without a retry', async () => {

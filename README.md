@@ -1,131 +1,155 @@
 # DeepSeek 3D Presentation
 
-Prompt → cinematic 3D fly-through. An AI builds a 3D presentation deck (text +
-primitives + camera moves) from a one-line topic, rendered with Three.js.
+**Prompt → cinematic 3D fly-through.**
+Type a one-line topic and an AI builds a 3D presentation deck — text, primitives, GLB models, charts, and camera moves — rendered live with Three.js / React Three Fiber.
+
+> No API key? No problem — the app boots straight into a fallback demo deck ("The Solar System") so you can explore the renderer, camera controls, and post-processing with zero setup.
+
+---
+
+## Table of contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Using the AI generator](#using-the-ai-generator)
+- [Live adaptation (Ask bar)](#live-adaptation-ask-bar)
+- [Camera & visuals](#camera--visuals)
+- [Architecture](#architecture)
+- [Deck schema](#deck-schema)
+- [3D model credits](#3d-model-credits)
+- [Security note](#security-note-dev-only-setup)
+
+---
+
+## Features
+
+- 🎬 **AI-generated decks** — one line of text becomes a 4-slide, camera-choreographed 3D presentation.
+- 🧩 **Rich slide objects** — text, primitives (box/sphere/torus/plane), GLB models, 3D bar charts, and AI-generated images.
+- 🗣️ **Narration** — slide notes are read aloud via the browser's `speechSynthesis` API.
+- 💬 **Live Q&A** — ask a question mid-presentation; the app either answers inline or generates and splices in new slides on the fly.
+- 🕹️ **Free-look camera** — orbit, zoom, and pan between scripted transitions without ever clipping into an object.
+- ✨ **Cinematic post-processing** — bloom, vignette, film grain, and a rotating nebula backdrop.
+- 📴 **Offline-friendly** — works without any API key using a built-in fallback deck.
 
 ## Quick start
 
 ```bash
-Activate the project conda env (it contains Node + npm), then install dependencies
-(first time only). Copy the example env file, then edit `.env` and put your
-OpenRouter key in (`VITE_OPENROUTER_API_KEY=sk-or-v1-...` from openrouter.ai → Keys),
-then **restart the dev server** (Vite reads `.env` at startup). The default model
-is the free `nvidia/nemotron-3-ultra-550b-a55b:free`; override with `VITE_LLM_MODEL`.
+# 1. Activate the project's conda env (contains Node + npm)
+conda activate /Users/shauntheking/Projects/Deepseek_3D_presentation/.conda/AIP
+
+# 2. Install dependencies (first time only)
+npm install
+
+# 3. Set up environment variables
+cp .env.example .env
+```
+
+Then open `.env` and add your [OpenRouter](https://openrouter.ai/) key:
 
 ```
-conda activate /Users/shauntheking/Projects/Deepseek_3D_presentation/.conda/AIP
-npm install
-cp .env.example .env
+VITE_OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+The default model is the free `nvidia/nemotron-3-ultra-550b-a55b:free`; override it with `VITE_LLM_MODEL` if you want something else.
+
+```bash
+# 4. Restart the dev server (Vite only reads .env at startup)
 npm run dev
 ```
 
-Then open http://localhost:5173.
+Open **http://localhost:5173**.
 
-Other commands: `npm test` (schema validation tests), `npm run build`
-(production build → `dist/`), `npm run preview` (serve the build).
+**Other commands:**
 
-> ⚠️ If you paste commands into zsh, keep `#` out of pasted lines — interactive
-> zsh does not always treat `#` as a comment, so `cmd # note` can corrupt the
-> command (a stray `#` arg made Vite serve from a wrong root and show a blank
-> page). Paste only the plain commands above.
+| Command | Description |
+|---|---|
+| `npm test` | Run schema validation tests |
+| `npm run build` | Production build → `dist/` |
+| `npm run preview` | Serve the production build locally |
 
+> ⚠️ **zsh users:** don't paste `#` comments inline with commands — interactive zsh doesn't always treat `#` as a comment start, and a stray `#` argument has been known to make Vite serve from the wrong root (blank page). Paste only the plain commands above.
 
-```
+## Using the AI generator
 
-No API key? The app still runs — it renders the fallback demo deck (`src/deck.js`,
-"The Solar System") and you can navigate with ←/→ or the buttons.
+Type a topic — e.g. *"How volcanoes erupt"* — and hit **Generate**. DeepSeek returns a 4-slide deck that conforms to the schema in `src/generator.js`. Each deck costs a fraction of a cent.
 
-## Using the AI button
+Good topics to try:
+- "How volcanoes erupt"
+- "The Roman Empire"
+- "How mRNA vaccines work"
 
-Type a topic (e.g. *"How volcanoes erupt"*), hit **Generate**, and DeepSeek
-returns a 4-slide deck that follows the schema in `src/generator.js`. Each deck
-costs a fraction of a cent.
+Navigate slides with **← / →** or the on-screen buttons.
 
-Test topics from the plan: *"How volcanoes erupt"*, *"The Roman Empire"*,
-*"How mRNA vaccines work"*.
+## Live adaptation (Ask bar)
+
+Press **/** or click the **Ask** bar at any point during a presentation to ask a follow-up question. Behind the scenes:
+
+1. **`routeQuestion`** — a cheap, low-temperature router call decides whether the question needs:
+   - a **quick answer** → shown as a dismissible overlay, deck untouched, or
+   - a **deeper dive** → routed to slide generation.
+2. **`generateInsertSlides`** — produces 1–2 new, schema-validated slides (retried once on failure).
+3. **`preloadAssets`** — warms GLB/image caches so the new slides never stall on load.
+4. The new slides are spliced in right after the current one, the camera flies there automatically, and the updated deck is saved to history.
+
+Verified example: *"What are Saturn's rings made of?"* returns a quick answer overlay, while *"Tell me more about how Saturn's rings formed"* inserts two new slides ("Saturn's Ring Origins", "The Shattered Moon Theory") complete with models and imagery.
+
+## Camera & visuals
+
+- **Free-look controls** — after each scripted transition, `OrbitControls` takes over (drag to orbit, wheel/pinch to zoom, damping on). Zoom is clamped to a 2.5–50 range so you can't clip into objects or lose the scene. Controls lock during transitions and re-sync to the next slide's `lookAt` on arrival; keyboard `+`/`-` and on-screen buttons also zoom.
+- **Post-processing** — Bloom (tuned to emissive objects only), Vignette, and subtle film grain via `@react-three/postprocessing`. Depth of field is intentionally omitted to protect frame rate on midrange hardware; if the effects composer fails to initialize, the plain scene still renders.
+- **Environment & lighting** — a night-preset environment map adds reflections to metal/emissive materials (degrades gracefully offline), with rebalanced ambient/directional lighting.
+- **Background** — tinted fog plus a slowly rotating nebula-gradient sphere behind the starfield, instead of a flat void.
+- **Motion** — staggered GSAP entrance animations and gently floating titles; tweens are cleaned up on unmount to avoid leaks across regenerated decks.
+- **Typography** — Space Grotesk throughout, via `@fontsource`.
+- **Materials** — physically-based materials with clearcoat sheen on metallic hero objects.
+- **Performance** — capped device pixel ratio, 4x multisampling, no DoF, and automatic disposal of geometries/materials on unmount.
 
 ## Architecture
 
 | File | Role |
 |---|---|
+| `src/main.jsx` | React entry point |
 | `src/App.jsx` | UI shell: title, Generate bar, nav, overlays |
 | `src/Scene.jsx` | Three.js renderer: camera rig, transitions, glow, sparkles |
-| `src/deck.js` | Fallback deck (works offline, demos every object type) |
-| `src/generator.js` | AI generator — OpenRouter (free Nemotron by default), sanitizes JSON, validates, retries once |
-| `src/schema.js` | Deck schema + `validateDeck` — structural validation of LLM output |
-| `src/catalog.js` | GLB catalog (17 CC0/CC-BY models, assetIds only — the AI never invents URLs) |
-| `src/history.js` | Deck history in `localStorage` (last 10 decks) |
+| `src/deck.js` | Fallback deck (works offline, demonstrates every object type) |
+| `src/generator.js` | AI generator — calls OpenRouter, sanitizes JSON, validates, retries once |
+| `src/schema.js` | Deck schema + `validateDeck`, structural validation of LLM output |
+| `src/catalog.js` | GLB catalog (17 CC0 / CC-BY models); the AI only ever picks an `assetId`, never invents URLs |
+| `src/history.js` | Deck history persisted to `localStorage` (last 10 decks) |
 
-## Phase 3 features
+### Slide object types
 
-- **GLB objects** — `{ type: 'glb', assetId, position, rotation?, scale? }`. The AI picks
-  an `assetId` from `src/catalog.js`; models are auto-normalized to ~1.4 units and
-  streamed from jsDelivr (Khronos glTF-Sample-Assets). A failing model renders
-  nothing instead of breaking the app.
-- **Charts** — `{ type: 'chart', data: [{ label, value }], position, scale?, color?, title? }`.
-  3D bars scaled to the data, with labels and a base plate (1–12 entries).
-- **Images** — `{ type: 'image', prompt, position?, scale?, opacity? }`. A 1280×720
-  plane generated by [Pollinations](https://pollinations.ai) from a short prompt
-  (no API key). Use 1–2 per deck, placed behind the scene.
-- **Narration** — each slide's `notes` are read aloud with `speechSynthesis`
-  (toggle with the 🔊/🔇 button; browsers may require a first click).
+- **GLB models** — `{ type: 'glb', assetId, position, rotation?, scale? }`. The AI selects an `assetId` from `src/catalog.js`; models are auto-normalized to ~1.4 units and streamed from jsDelivr (Khronos glTF-Sample-Assets). A model that fails to load simply renders nothing rather than breaking the app.
+- **Charts** — `{ type: 'chart', data: [{ label, value }], position, scale?, color?, title? }`. Renders as 3D bars scaled to the data, with labels and a base plate (supports 1–12 entries).
+- **Images** — `{ type: 'image', prompt, position?, scale?, opacity? }`. A 1280×720 plane generated by [Pollinations](https://pollinations.ai) from a short prompt, no API key required. Best used sparingly (1–2 per deck), placed behind the scene.
+- **Narration** — each slide's `notes` field is read aloud via `speechSynthesis` (toggle with the 🔊/🔇 button; some browsers require a first user click before audio can play).
 
-## Phase 4 — Live Adaptation (your differentiator)
+## Deck schema
 
-Type a question into the **Ask** bar (bottom center, or press `/`) during a
-presentation. The flow:
+Also embedded directly in the LLM's system prompt:
 
-1. `routeQuestion` — a cheap router call (temperature 0.3) decides:
-   - `{"mode":"answer","answer":"..."}` — a quick fact → shown as a **Live
-     answer overlay** (dismiss with × / Escape / click outside); the deck is
-     untouched.
-   - `{"mode":"insert"}` — a deeper dive → `generateInsertSlides` produces
-     **1–2 validated slides** (same schema pipeline, retry-once), truncated to 2.
-2. `preloadAssets` warms the GLB/image caches so the spliced slide never waits.
-3. The new slides are **spliced right after the current one**, the camera flies
-   there (`setIdx`), and the updated deck is saved to history.
-
-Real-model verification: *"What are Saturn's rings made of?"* → answer overlay;
-*"Tell me more about how Saturn's rings formed"* → 2 inserted slides
-("Saturn's Ring Origins", "The Shattered Moon Theory") with GLBs and an image,
-all validating end-to-end.
-
-### Cinematic upgrades (zoom + post-processing)
-
-- **Zoom / free-look** — after each transition the camera hands over to
-  `OrbitControls` (drag to orbit, wheel/pinch to zoom, damping on, pan off).
-  Zoom is clamped to **2.5–50** so you can never clip inside an object or lose
-  the scene. Controls **lock during transitions**; when the camera settles it
-  re-enables and re-syncs its target to the slide's `lookAt`. If you're zoomed
-  in when you press Next, the tween starts from your exact current view.
-  Keyboard `+`/`-` or the `−`/`+` buttons zoom too.
-- **Post-processing** (`@react-three/postprocessing`): Bloom (`mipmapBlur`,
-  tuned so only emissive objects glow), Vignette (darkness 0.8), film grain
-  (`Noise`, opacity 0.035). DepthOfField is intentionally **not** included —
-  it would risk dropping below 60fps on midrange hardware. If the composer
-  fails, the plain scene still renders.
-- **Environment** — `<Environment preset="night">` adds real reflections to
-  metal/emissive materials (fails gracefully offline); lights rebalanced
-  (ambient 0.2, directional 0.7).
-- **Background** — no more flat void: tinted fog + a back-side **nebula
-  gradient sphere** (cheap shader, slowly rotating) behind the starfield.
-- **Motion** — GSAP **staggered entrance** (objects scale in with a back ease,
-  ~80ms stagger); titles float gently via drei `<Float>`; tweens are killed on
-  unmount so regenerating decks don't leak.
-- **Typography** — Space Grotesk (OFL, bundled via `@fontsource`) with slight
-  `letterSpacing` on all drei `<Text>`.
-- **Materials** — primitives use `meshPhysicalMaterial` with clearcoat sheen
-  on metallic hero objects.
-- **Performance** — `dpr={[1, 2]}`, composer `multisampling={4}`, no DoF;
-  R3F auto-disposes geometries/materials on unmount.
-
-New dependencies: `gsap`, `@react-three/postprocessing` (+ `postprocessing`),
-`@fontsource/space-grotesk`.
+```ts
+type Deck = {
+  title: string
+  slides: {
+    title: string
+    notes: string
+    camera: { position: [n, n, n]; lookAt: [n, n, n]; fov?: number }
+    objects: (
+      | { type: 'text'; content: string; position: [n, n, n]; fontSize: number; color?: string; billboard?: boolean }
+      | { type: 'primitive'; shape: 'box' | 'sphere' | 'torus' | 'plane'; position: [n, n, n]; rotation?: [n, n, n]; scale?: [n, n, n]; color: string; metalness?: number; roughness?: number; emissive?: string }
+      | { type: 'glb'; assetId: string; position: [n, n, n]; rotation?: [n, n, n]; scale?: [n, n, n] }
+      | { type: 'chart'; data: { label: string; value: number }[]; position: [n, n, n]; scale?: [n, n, n]; color?: string; title?: string }
+      | { type: 'image'; prompt: string; position?: [n, n, n]; scale?: [n, n, n]; opacity?: number }
+    )[]
+    transition: 'fly' | 'fade' | 'orbit'
+  }[]
+}
+```
 
 ## 3D model credits
 
-All GLBs are from [Khronos glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets)
-and served via jsDelivr.
+All GLB models are from [Khronos glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets), served via jsDelivr.
 
 | assetId | License | Attribution |
 |---|---|---|
@@ -141,31 +165,15 @@ and served via jsDelivr.
 | box | CC BY 4.0 | Cesium |
 | damaged-helmet | CC BY 4.0 | ctxwing |
 | glam-velvet-sofa | CC BY 4.0 | Eric Chadwick (Wayfair) |
-| `src/main.jsx` | React entry point |
 
-Deck schema (also embedded in the LLM system prompt):
+## Security note (dev-only setup)
 
-```ts
-type Deck = {
-  title: string
-  slides: {
-    title: string
-    notes: string
-    camera: { position: [n,n,n]; lookAt: [n,n,n]; fov?: number }
-    objects: (
-      | { type: 'text'; content: string; position: [n,n,n]; fontSize: number; color?: string; billboard?: boolean }
-      | { type: 'primitive'; shape: 'box'|'sphere'|'torus'|'plane'; position: [n,n,n]; rotation?: [n,n,n]; scale?: [n,n,n]; color: string; metalness?: number; roughness?: number; emissive?: string }
-    )[]
-    transition: 'fly' | 'fade' | 'orbit'
-  }[]
-}
-```
+⚠️ The DeepSeek/OpenRouter API key currently lives in the **client** (`src/generator.js` reads `VITE_DEEPSEEK_API_KEY`/`VITE_OPENROUTER_API_KEY` directly). Any visitor can read it from the browser and spend your quota.
 
-## ⚠️ Security note (dev-only setup)
+This is intentional for **local development only**. A future phase should move the API call behind a serverless proxy (e.g. a Vercel function) so the key never ships to the browser.
 
-The DeepSeek API key lives in the **client** (`src/generator.js` reads
-`VITE_DEEPSEEK_API_KEY`). Any visitor can read it from the browser and use it to
-spend your quota. This is intentional for local Phase 1 testing only — **Phase 5
-moves the call behind a serverless proxy** (e.g. a Vercel function) so the key
-never ships to the browser. Never deploy the current setup as-is. `.env` and
-`.conda/` are gitignored.
+**Never deploy the current setup as-is.** `.env` and `.conda/` are already gitignored.
+
+## New dependencies
+
+`gsap`, `@react-three/postprocessing` (+ `postprocessing`), `@fontsource/space-grotesk`

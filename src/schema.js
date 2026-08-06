@@ -53,7 +53,7 @@ export function validateDeck(deck) {
       } else if (obj.type === 'glb') {
         if (typeof obj.assetId !== 'string' || !CATALOG_IDS.has(obj.assetId)) {
           throw new Error(
-            `${o}: glb needs a valid assetId from the catalog (got "${obj.assetId}")`,
+            `${o}: glb needs a valid assetId from the catalog (got "${obj.assetId}") — use only the assetIds listed in the system prompt`,
           )
         }
       } else if (obj.type === 'chart') {

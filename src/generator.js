@@ -45,6 +45,10 @@ All text must have billboard: true. Objects must not overlap each other.
 Primitive shapes are ONLY: box, sphere, torus, plane. Never use other shapes
 (cube, cylinder, cone, pyramid, etc.). Every primitive MUST include a color string.
 All numbers must be plain JSON numbers — never expressions like Math.PI or -Math.PI/2.
+RULE: Prefer 'glb' objects over 'primitive' shapes whenever a catalog asset's
+tags match the slide's topic. Use primitives only for abstract backdrops, floors,
+or when no catalog asset fits. Include at least 1 glb object on most slides that
+have a catalog match.
 
 type Deck = {
   title: string;
@@ -84,7 +88,8 @@ Rules for the new object types:
   sheen-chair: furniture,room | metal-rough-spheres: material,abstract |
   fox: animal,wildlife | box: shape,cargo | damaged-helmet: helmet,battle |
   glam-velvet-sofa: furniture,sofa
-  Pick assets whose tags match the topic. Default scale 1 = a ~1.4-unit-tall object.
+  Always pick the assetId whose tags best match the slide's topic. Default scale
+  1 = a ~1.4-unit-tall object.
 - chart: 3D bar chart for statistics or comparisons. data: 1-12 entries of
   { label: string, value: number }. Bars are auto-sized; values can be any scale.
 - image: a background plane generated from your prompt. Write a short cinematic
