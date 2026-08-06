@@ -49,6 +49,14 @@ RULE: Prefer 'glb' objects over 'primitive' shapes whenever a catalog asset's
 tags match the slide's topic. Use primitives only for abstract backdrops, floors,
 or when no catalog asset fits. Include at least 1 glb object on most slides that
 have a catalog match.
+LAYOUT RULES (mandatory):
+- Text lives in a LEFT column: x around -3.4 (between -4.5 and -2.0), stacked from y = 2.6 downward.
+- glb / primitive objects live on the RIGHT: x between 1.5 and 4.0, y between -1.5 and 0.5.
+- Charts are centered at x = 0, y = 0.3.
+- Keep at least 2.5 world units between any text position and any object position.
+- Title fontSize max 1.1, other text fontSize max 0.5. Never place two text objects at the same y.
+- Background image planes stay at z = -7.
+- The app re-positions everything into this layout in code; your positions are suggestions.
 
 type Deck = {
   title: string;
@@ -127,6 +135,43 @@ export function normalizeDeck(deck) {
         obj.type = 'primitive'
       }
     }
+  }
+  enforceLayout(deck)
+  return deck
+}
+
+// The LLM can't do spatial reasoning, so don't trust its positions: snap every
+// slide into a fixed template. Text stacks top-left, models grid on the right,
+// wide charts center, images stay far behind. Overlaps become impossible.
+export function enforceLayout(deck) {
+  for (const slide of deck.slides) {
+    const texts = slide.objects.filter((o) => o.type === 'text')
+    const solids = slide.objects.filter((o) => o.type === 'glb' || o.type === 'primitive')
+    const charts = slide.objects.filter((o) => o.type === 'chart')
+    const imgs = slide.objects.filter((o) => o.type === 'image')
+
+    // 1. Text: stack top-left, biggest (title) first, spacing by line count.
+    texts.sort((a, b) => (b.fontSize || 0.5) - (a.fontSize || 0.5))
+    let y = 2.6
+    for (const t of texts) {
+      const fs = t.fontSize || 0.5
+      const lines = String(t.content).split('\n').length
+      t.position = [-3.4, y, 0]
+      y -= fs * lines * 1.35 + 0.5 // block height + gap
+    }
+
+    // 2. Models: right/lower area, grid-spaced, far from the text column.
+    solids.forEach((m, i) => {
+      m.position = [2.1 + (i % 2) * 1.5, -0.9 - Math.floor(i / 2) * 1.8, 0]
+    })
+
+    // 3. Charts are wide (up to 12 bars) — center them instead of the right grid.
+    charts.forEach((c, i) => {
+      c.position = [0, 0.3 - i * 2.6, 0]
+    })
+
+    // 4. Backgrounds stay far behind everything.
+    for (const im of imgs) im.position = [0, 0.5, -7]
   }
   return deck
 }
@@ -221,6 +266,7 @@ export async function generateInsertSlides(question, deck, slideIdx, retryHint) 
   const sub = { title: deck.title, slides: d.slides }
   if (Array.isArray(sub.slides) && sub.slides.length > 2) sub.slides = sub.slides.slice(0, 2)
   try {
+    normalizeDeck(sub) // aliases + layout enforcement, same as full decks
     validateDeck(sub)
   } catch (e) {
     if (retryHint) throw new Error('Insert returned invalid slides twice: ' + e.message)

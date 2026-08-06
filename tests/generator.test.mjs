@@ -84,7 +84,7 @@ test('SYSTEM_PROMPT instructs the model to prefer glb objects over primitives', 
 test('a fenced-JSON response parses without a retry', async () => {
   const calls = mockFetch([{ raw: '```json\n' + JSON.stringify(goodDeck) + '\n```' }])
   const deck = await generateDeck('topic')
-  assert.deepEqual(deck, goodDeck)
+  assert.deepEqual(summarize(deck), summarize(goodDeck))
   assert.equal(calls.length, 1)
 })
 
@@ -113,10 +113,17 @@ test('normalizeDeck rewrites shape shorthands ({ type: "torus" }) to primitives'
   assert.doesNotThrow(() => validateDeck(deck))
 })
 
+// Layout enforcement repositions objects, so compare deck STRUCTURE, not positions.
+const summarize = (d) => ({
+  title: d.title,
+  slideTitles: d.slides.map((s) => s.title),
+  types: d.slides.flatMap((s) => s.objects.map((o) => o.type)),
+})
+
 test('returns the deck when the first response is valid', async () => {
   const calls = mockFetch([{ deck: goodDeck }])
   const deck = await generateDeck('topic')
-  assert.deepEqual(deck, goodDeck)
+  assert.deepEqual(summarize(deck), summarize(goodDeck))
   assert.equal(calls.length, 1)
 })
 
@@ -130,7 +137,7 @@ test('fixes Math.PI literals in-place without a retry', async () => {
 test('retries once with the validation error as a hint, then returns a valid deck', async () => {
   const calls = mockFetch([{ deck: invalidDeck }, { deck: goodDeck }])
   const deck = await generateDeck('topic')
-  assert.deepEqual(deck, goodDeck)
+  assert.deepEqual(summarize(deck), summarize(goodDeck))
   assert.equal(calls.length, 2)
   const retryBody = calls[1].body
   assert.match(retryBody.messages[1].content, /rejected/)
@@ -149,7 +156,7 @@ test('gives up (throws) after two invalid responses', async () => {
 test('retries once when the JSON itself is unparseable', async () => {
   const calls = mockFetch([{ raw: '{"title":' }, { deck: goodDeck }])
   const deck = await generateDeck('topic')
-  assert.deepEqual(deck, goodDeck)
+  assert.deepEqual(summarize(deck), summarize(goodDeck))
   assert.equal(calls.length, 2)
   assert.match(calls[1].body.messages[1].content, /not valid JSON/)
 })

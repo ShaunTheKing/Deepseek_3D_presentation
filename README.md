@@ -100,6 +100,11 @@ Verified example: *"What are Saturn's rings made of?"* returns a quick answer ov
 - **Environment & lighting** — a night-preset environment map adds reflections to metal/emissive materials (degrades gracefully offline), with rebalanced ambient/directional lighting.
 - **Background** — tinted fog plus a slowly rotating nebula-gradient sphere behind the starfield, instead of a flat void.
 - **Motion** — staggered GSAP entrance animations and gently floating titles; tweens are cleaned up on unmount to avoid leaks across regenerated decks.
+- **Enforced layout** — the LLM can't do spatial reasoning, so `enforceLayout`
+  (inside `normalizeDeck`) snaps every generated slide into a fixed template:
+  text stacks top-left (x −3.4, title first), GLBs/primitives grid on the right
+  (x 2.1/3.6), charts center, images pin to z −7. Overlaps are structurally
+  impossible; the system prompt's LAYOUT RULES keep the model aligned with it.
 - **Typography** — Space Grotesk throughout, via `@fontsource`.
 - **Materials** — physically-based materials with clearcoat sheen on metallic hero objects.
 - **Performance** — capped device pixel ratio, 4x multisampling, no DoF, and automatic disposal of geometries/materials on unmount.
