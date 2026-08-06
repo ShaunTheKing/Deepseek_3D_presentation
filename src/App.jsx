@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DECK as FALLBACK_DECK } from './deck'
 import { generateDeck, routeQuestion, generateInsertSlides, normalizeDeck } from './generator'
 import { loadHistory, saveToHistory, clearHistory } from './history'
@@ -26,6 +26,22 @@ const STAGES = [
 // so history entries, fallback, and new generations all obey the same layout.
 const prep = normalizeDeck
 
+// View override: Auto-fit (stock fitCamera), Wide, Close-up, Text focus.
+function applyView(cam, view) {
+  if (view === 'fit') return cam
+  if (view === 'text')
+    return { position: [-3.4, 0.8, 7], lookAt: [-3.4, 0.3, 0], fov: cam.fov ?? 50 }
+  const k = view === 'wide' ? 1.4 : 0.7
+  const [tx, ty, tz] = cam.lookAt
+  return {
+    ...cam,
+    position: cam.position.map((p, i) => {
+      const t = [tx, ty, tz][i]
+      return t + (p - t) * k
+    }),
+  }
+}
+
 export default function App() {
   const [boot] = useState(loadHistory)
   const [idx, setIdx] = useState(0)
@@ -40,12 +56,15 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState(0)
   const [error, setError] = useState(null)
-  const [muted, setMuted] = useState(false)
   const [ask, setAsk] = useState('')
   const [asking, setAsking] = useState(false)
   const [answer, setAnswer] = useState(null)
+  const [view, setView] = useState('fit')
   const askRef = useRef(null)
-  const slide = DECK.slides[idx]
+  const slide = useMemo(() => {
+    const s = DECK.slides[idx]
+    return { ...s, camera: applyView(s.camera, view) }
+  }, [DECK, idx, view])
 
   // Cycle loading stage messages while generating.
   useEffect(() => {
@@ -63,7 +82,6 @@ export default function App() {
 
   const generate = async () => {
     if (!topic.trim() || loading) return
-    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
     setLoading(true)
     setStage(0)
     setError(null)
@@ -156,21 +174,6 @@ export default function App() {
     return () => clearTimeout(t)
   }, [idx, isFade])
 
-  // Narration: read the slide's notes aloud (speechSynthesis, muted toggle).
-  useEffect(() => {
-    if (muted || typeof speechSynthesis === 'undefined' || !slide?.notes) return
-    const t = setTimeout(() => {
-      speechSynthesis.cancel()
-      const u = new SpeechSynthesisUtterance(slide.notes)
-      u.rate = 1.02
-      speechSynthesis.speak(u)
-    }, 450)
-    return () => {
-      clearTimeout(t)
-      if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
-    }
-  }, [idx, muted, slide])
-
   return (
     <div
       style={{
@@ -201,6 +204,25 @@ export default function App() {
 
       {/* AI generation bar */}
       <div style={{ position: 'absolute', top: 20, right: 24, display: 'flex', gap: 8 }}>
+        <select
+          value={view}
+          onChange={(e) => setView(e.target.value)}
+          style={{
+            padding: '7px 10px',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.25)',
+            background: 'rgba(0,0,0,0.55)',
+            color: 'white',
+            fontSize: 13,
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <option value="fit">View: Auto-fit</option>
+          <option value="wide">View: Wide</option>
+          <option value="close">View: Close-up</option>
+          <option value="text">View: Text focus</option>
+        </select>
         <button
           style={{ ...btn, opacity: loading ? 0.6 : 1 }}
           onClick={() => setShowHistory((v) => !v)}
@@ -400,14 +422,6 @@ export default function App() {
         </button>
         <button style={btn} onClick={() => controlsAPI.zoomIn?.()} title="Zoom in (+)">
           +
-        </button>
-        <button
-          style={{ ...btn, opacity: muted ? 0.6 : 1 }}
-          onClick={() => setMuted((m) => !m)}
-          disabled={loading}
-          title={muted ? 'Unmute narration' : 'Mute narration'}
-        >
-          {muted ? '🔇' : '🔊'}
         </button>
         <button style={btn} onClick={() => go(-1)} disabled={idx === 0 || loading}>
           ‹ Prev

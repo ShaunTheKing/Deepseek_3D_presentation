@@ -121,6 +121,7 @@ export function sanitizeLLMJson(content) {
 export const LAYOUT_MAX_W = 12 // keep in sync with <Text maxWidth> in Scene.jsx
 export const LAYOUT_LINE_H = 1.35
 export const LAYOUT_GAP = 0.5
+const FOV = 50 // fov is constant — changing distance, not fov, preserves bloom/glow
 
 // Accept the shape aliases and shorthands models love to use; the renderer only
 // ever sees canonical objects.
@@ -176,6 +177,9 @@ export function enforceLayout(deck) {
 
     // 4. Backgrounds stay far behind everything.
     for (const im of imgs) im.position = [0, 0.5, -7]
+
+    // 5. Fit the camera to the content — no more LLM crops.
+    fitCamera(slide)
   }
   return deck
 }
@@ -187,6 +191,36 @@ function textLines(t) {
   return String(t.content)
     .split('\n')
     .reduce((n, l) => n + Math.max(1, Math.ceil(l.trim().length / perLine)), 0)
+}
+
+// Auto-fit camera so the content bounding box is guaranteed in view.
+export function fitCamera(slide) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const o of slide.objects) {
+    if (o.type === 'image') continue
+    let hw = 0.9, hh = 0.9 // default half-width/height for GLBs/primitives
+    if (o.type === 'text') {
+      const fs = o.fontSize || 0.5
+      const longest = Math.max(0, ...String(o.content).split('\n').map((l) => l.length))
+      hw = Math.min(LAYOUT_MAX_W, longest * fs * 0.62) / 2
+      hh = (fs * LAYOUT_LINE_H * textLines(o)) / 2
+    } else if (o.type === 'chart') {
+      hw = 4; hh = 1.5
+    }
+    const [x, y] = o.position
+    minX = Math.min(minX, x - hw); maxX = Math.max(maxX, x + hw)
+    minY = Math.min(minY, y - hh); maxY = Math.max(maxY, y + hh)
+  }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+  const w = maxX - minX, h = maxY - minY
+  const vFov = (FOV * Math.PI) / 180
+  const aspect = 1.6
+  const z = Math.max((h / 2) / Math.tan(vFov / 2), (w / 2) / (Math.tan(vFov / 2) * aspect)) * 1.3 + 1
+  slide.camera = {
+    position: [+cx.toFixed(2), +cy.toFixed(2), +z.toFixed(2)],
+    lookAt: [cx, cy, 0],
+    fov: FOV,
+  }
 }
 
 export const ROUTER_PROMPT = `
