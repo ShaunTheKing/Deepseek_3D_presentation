@@ -7,8 +7,10 @@ primitives + camera moves) from a one-line topic, rendered with Three.js.
 
 ```bash
 Activate the project conda env (it contains Node + npm), then install dependencies
-(first time only). Copy the example env file, then edit `.env` and put your real
-key in (`VITE_DEEPSEEK_API_KEY=sk-...` from platform.deepseek.com → API Keys).
+(first time only). Copy the example env file, then edit `.env` and put your
+OpenRouter key in (`VITE_OPENROUTER_API_KEY=sk-or-v1-...` from openrouter.ai → Keys).
+The default model is the free `nvidia/nemotron-3-ultra-550b-a55b:free`; override
+with `VITE_LLM_MODEL`, or keep a `VITE_DEEPSEEK_API_KEY` as a fallback provider.
 
 ```
 conda activate /Users/shauntheking/Projects/Deepseek_3D_presentation/.conda/AIP
@@ -49,7 +51,7 @@ Test topics from the plan: *"How volcanoes erupt"*, *"The Roman Empire"*,
 | `src/App.jsx` | UI shell: title, Generate bar, nav, overlays |
 | `src/Scene.jsx` | Three.js renderer: camera rig, transitions, glow, sparkles |
 | `src/deck.js` | Fallback deck (works offline, demos every object type) |
-| `src/generator.js` | Phase 1 AI generator — calls DeepSeek, sanitizes `Math.PI` literals, validates, retries once |
+| `src/generator.js` | AI generator — OpenRouter (free Nemotron by default), sanitizes JSON, validates, retries once |
 | `src/schema.js` | Deck schema + `validateDeck` — structural validation of LLM output |
 | `src/catalog.js` | GLB catalog (17 CC0/CC-BY models, assetIds only — the AI never invents URLs) |
 | `src/history.js` | Deck history in `localStorage` (last 10 decks) |

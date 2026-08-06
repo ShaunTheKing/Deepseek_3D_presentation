@@ -70,6 +70,19 @@ test('sanitizeLLMJson rewrites Math.PI expressions to plain numbers', () => {
   assert.equal(sanitizeLLMJson('no expressions here'), 'no expressions here')
 })
 
+test('sanitizeLLMJson strips markdown fences around the JSON', () => {
+  assert.equal(sanitizeLLMJson('```json\n{"a":1}\n```'), '{"a":1}')
+  assert.equal(sanitizeLLMJson('```\n{"a":1}\n```'), '{"a":1}')
+  assert.equal(sanitizeLLMJson('{"a":1}'), '{"a":1}')
+})
+
+test('a fenced-JSON response parses without a retry', async () => {
+  const calls = mockFetch([{ raw: '```json\n' + JSON.stringify(goodDeck) + '\n```' }])
+  const deck = await generateDeck('topic')
+  assert.deepEqual(deck, goodDeck)
+  assert.equal(calls.length, 1)
+})
+
 test('normalizeDeck maps model-friendly aliases to canonical shapes', () => {
   const deck = structuredClone(goodDeck)
   deck.slides[0].objects = [

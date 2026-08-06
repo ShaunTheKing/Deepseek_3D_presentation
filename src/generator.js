@@ -1,9 +1,36 @@
 import { validateDeck } from './schema.js'
 
 // ⚠️ Testing only — Phase 5 moves this behind a server proxy.
-// Set VITE_DEEPSEEK_API_KEY in a local .env file (see .env.example) or paste your key below.
-// Optional chaining keeps this module importable in plain Node for unit tests.
-const API_KEY = import.meta.env?.VITE_DEEPSEEK_API_KEY || 'sk-paste-your-key-here'
+// Provider: OpenRouter (OpenAI-compatible endpoint). Set VITE_OPENROUTER_API_KEY
+// in a local .env file (see .env.example). VITE_DEEPSEEK_API_KEY still works as a
+// fallback. Optional chaining keeps this module importable in plain Node for tests.
+const API_KEY =
+  import.meta.env?.VITE_OPENROUTER_API_KEY ||
+  import.meta.env?.VITE_DEEPSEEK_API_KEY ||
+  'sk-or-paste-your-key-here'
+
+const API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const MODEL = import.meta.env?.VITE_LLM_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free'
+
+async function chat(messages, temperature) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + API_KEY,
+      'X-Title': 'DeepSeek 3D Presentation',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      temperature,
+      response_format: { type: 'json_object' },
+    }),
+  })
+  if (!res.ok) throw new Error('API error ' + res.status)
+  const data = await res.json()
+  return sanitizeLLMJson(data.choices[0].message.content)
+}
 
 export const SYSTEM_PROMPT = `
 You are an expert 3D presentation designer.
@@ -61,16 +88,16 @@ Rules for the new object types:
 `
 
 // The model sometimes writes code-like literals (-Math.PI/2, Math.PI*2) instead of
-// plain JSON numbers. Rewrite those exact forms to their numeric value.
+// plain JSON numbers, or wraps the JSON in markdown fences. Rewrite those forms.
 export function sanitizeLLMJson(content) {
-  return content.replace(
-    /(-?\bMath\.PI)(\s*([*/])\s*(\d+(?:\.\d+)?))?/g,
-    (m, pi, opPart, op, num) => {
+  return String(content)
+    .replace(/^```(?:json)?\s*/m, '')
+    .replace(/\s*```\s*$/m, '')
+    .replace(/(-?\bMath\.PI)(\s*([*/])\s*(\d+(?:\.\d+)?))?/g, (m, pi, opPart, op, num) => {
       let v = Math.PI
       if (opPart) v = op === '*' ? v * parseFloat(num) : v / parseFloat(num)
       return String(m.startsWith('-') ? -v : v)
-    },
-  )
+    })
 }
 
 // Accept the shape aliases and shorthands models love to use; the renderer only
@@ -114,29 +141,18 @@ export async function routeQuestion(question, deck, slideIdx, retryHint) {
     ? `${deckContext(deck, slideIdx)} Viewer question: "${question}". Your previous response was rejected: ${retryHint} — output only the required JSON.`
     : `${deckContext(deck, slideIdx)} Viewer question: "${question}".`
 
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + API_KEY,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: ROUTER_PROMPT },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-    }),
-  })
-
-  if (!res.ok) throw new Error('Router API error ' + res.status)
-  const data = await res.json()
+  // API/transport errors propagate here — only malformed CONTENT retries.
+  const content = await chat(
+    [
+      { role: 'system', content: ROUTER_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    0.3,
+  )
 
   let d
   try {
-    d = JSON.parse(sanitizeLLMJson(data.choices[0].message.content))
+    d = JSON.parse(content)
   } catch (e) {
     if (retryHint) throw new Error('Router returned invalid JSON twice: ' + e.message)
     return routeQuestion(
@@ -170,29 +186,18 @@ export async function generateInsertSlides(question, deck, slideIdx, retryHint) 
     ? `A viewer asked: "${question}". Insert 1-2 new slides right after slide ${slideIdx + 1} of ${deckContext(deck, slideIdx)} Your previous response was rejected: ${retryHint} — fix every problem. Output ONLY raw JSON: {"slides":[{title, notes, camera, objects, transition}, ...]}`
     : `A viewer asked: "${question}". Insert 1-2 new slides right after slide ${slideIdx + 1} of ${deckContext(deck, slideIdx)} Output ONLY raw JSON: {"slides":[{title, notes, camera, objects, transition}, ...]}`
 
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + API_KEY,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0.7,
-      response_format: { type: 'json_object' },
-    }),
-  })
-
-  if (!res.ok) throw new Error('Insert API error ' + res.status)
-  const data = await res.json()
+  // API/transport errors propagate here — only malformed CONTENT retries.
+  const content = await chat(
+    [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    0.7,
+  )
 
   let d
   try {
-    d = JSON.parse(sanitizeLLMJson(data.choices[0].message.content))
+    d = JSON.parse(content)
   } catch (e) {
     if (retryHint) throw new Error('Insert returned invalid JSON twice: ' + e.message)
     return generateInsertSlides(
@@ -220,28 +225,16 @@ export async function generateDeck(topic, retryHint) {
       'rejected: ' + retryHint + ' — fix every problem.'
     : 'Topic: "' + topic + '". Generate a 4-slide deck.'
 
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + API_KEY,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0.7,
-      response_format: { type: 'json_object' },
-    }),
-  })
-
-  if (!res.ok) throw new Error('API error ' + res.status)
-  const data = await res.json()
-  const content = sanitizeLLMJson(data.choices[0].message.content)
-
   // Retry once (Phase 2) on ANY invalid output: unparseable JSON or schema violations.
+  // API/transport errors propagate here — only malformed CONTENT retries.
+  const content = await chat(
+    [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    0.7,
+  )
+
   let deck
   try {
     deck = JSON.parse(content)
